@@ -11,7 +11,7 @@ from werkzeug.exceptions import HTTPException
 
 from solver.complementary import check_optimality
 from solver.dual import dual_solution, dual_solution_to_dict
-from solver.examples import EXAMPLES, list_examples
+from solver.examples import list_examples
 from solver.graphical import graphical_to_dict, solve_graphical
 from solver.model import LP, fmt
 from solver.parser import parse_lp
@@ -85,7 +85,8 @@ def create_app():
     @app.route("/api/examples")
     def api_examples():
         """List the ready-to-load course examples."""
-        return ok_response(examples=list_examples(), items=EXAMPLES)
+        examples = list_examples()
+        return ok_response(examples=examples, items=examples)
 
     @app.route("/api/parse", methods=["POST"])
     def api_parse():

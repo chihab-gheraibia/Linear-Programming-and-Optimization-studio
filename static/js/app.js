@@ -241,10 +241,38 @@ function setMode(mode) {
   }
 }
 
+function normaliseExamples(payload) {
+  let source = payload;
+  if (payload && !Array.isArray(payload)) {
+    source = payload.examples || payload.items;
+  }
+  if (!Array.isArray(source) && source && typeof source === "object") {
+    source = Object.entries(source).map(([id, item]) => ({ id, key: id, ...item }));
+  }
+  if (!Array.isArray(source)) return [];
+  return source.map((item, index) => ({
+    id: item.id || item.key || String(index),
+    title: item.title || item.name || `Example ${index + 1}`,
+    description: item.description || "",
+    text: item.text || "",
+    ...(item.var_signs ? { var_signs: item.var_signs } : {}),
+    ...(item.proposed ? { proposed: item.proposed } : {}),
+  }));
+}
+
+function applyExample(example) {
+  state.currentExample = example.id;
+  state.varSigns = example.var_signs || null;
+  state.proposed = example.proposed || null;
+  $("#lp-text").value = example.text || "";
+  $("#problem-notes").value = example.description || "";
+  updateLineNumbers();
+}
+
 async function loadExamples() {
   try {
     const data = await api("/api/examples");
-    state.examples = data.items;
+    state.examples = normaliseExamples(data);
     renderExamples();
   } catch (error) {
     $("#examples-grid").innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
@@ -253,34 +281,22 @@ async function loadExamples() {
 
 function renderExamples() {
   $("#examples-grid").innerHTML = state.examples.map((example) => `
-    <button class="example-card" data-example="${escapeHtml(example.key)}" type="button">
-      <strong>${escapeHtml(example.name)}</strong>
+    <button class="example-card" data-example="${escapeHtml(example.id)}" type="button">
+      <strong>${escapeHtml(example.title)}</strong>
       <span>${escapeHtml(example.description)}</span>
     </button>
   `).join("");
   $$("[data-example]").forEach((button) => button.addEventListener("click", () => loadExample(button.dataset.example)));
 }
 
-async function loadExample(key) {
-  const example = state.examples.find((item) => item.key === key);
+async function loadExample(id) {
+  const example = state.examples.find((item) => item.id === id);
   if (!example) return;
-  try {
-    const response = await fetch("/api/examples");
-    const data = await response.json();
-    const full = data.items[key];
-    state.currentExample = key;
-    state.varSigns = full.var_signs || null;
-    state.proposed = full.proposed || null;
-    $("#lp-text").value = full.text;
-    $("#problem-notes").value = full.description || "";
-    updateLineNumbers();
-    await parseModel(true);
-    goToStep(2);
-    toast(`Loaded ${example.name}.`, "success");
-    saveSession();
-  } catch (error) {
-    toast(error.message, "error");
-  }
+  applyExample(example);
+  await parseModel(true);
+  goToStep(2);
+  toast(`Loaded ${example.title}.`, "success");
+  saveSession();
 }
 
 function saveSession() {

@@ -12,6 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app import create_app
 from solver.complementary import check_optimality
 from solver.dual import dual_solution, dualize, shadow_prices
 from solver.examples import EXAMPLES, get_example
@@ -377,6 +378,20 @@ def test_f_what_if():
     assert different["basis_changed"] is True
     assert "Basis changed" in different["message"]
     assert F(different["z"]) != F(3900)
+
+
+def test_g_examples_api_contract():
+    """G: the examples endpoint is a list of complete example cards."""
+    payload = create_app().test_client().get("/api/examples").get_json()
+    assert payload["ok"] is True
+    assert isinstance(payload["examples"], list)
+    assert payload["examples"]
+    for item in payload["examples"]:
+        assert {"id", "title", "description", "text"} <= set(item), item
+        assert isinstance(item["id"], str) and item["id"]
+        assert isinstance(item["title"], str) and item["title"]
+        assert isinstance(item["description"], str)
+        assert isinstance(item["text"], str) and "z =" in item["text"]
 
 
 if __name__ == "__main__":
