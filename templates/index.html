@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LP Studio — Linear Programming, step by step</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="LP Studio home">
+      <span class="brand-mark" aria-hidden="true">LP</span>
+      <span>LP Studio</span>
+    </a>
+    <div class="topbar-actions">
+      <button id="examples-menu" class="button button-ghost" type="button">Examples</button>
+      <button id="help-button" class="button button-ghost" type="button">Help</button>
+      <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle dark theme" aria-pressed="false">◐</button>
+    </div>
+  </header>
+
+  <nav class="stepper" aria-label="Method steps">
+    <button class="step is-active" data-step="1" type="button" aria-current="step"><span class="step-number">1</span> Describe</button>
+    <button class="step" data-step="2" type="button"><span class="step-number">2</span> Model</button>
+    <button class="step" data-step="3" type="button"><span class="step-number">3</span> Solve</button>
+    <button class="step" data-step="4" type="button"><span class="step-number">4</span> Interpret</button>
+  </nav>
+
+  <main class="page">
+    <section id="step-describe" class="step-panel is-active" data-panel="1">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Step 1</p>
+            <h1>Describe your problem</h1>
+            <p class="muted">Write a few notes, then pick a course example or start from scratch.</p>
+          </div>
+        </div>
+        <label class="field-label" for="problem-notes">Problem notes (optional, kept in the report)</label>
+        <textarea id="problem-notes" class="notes-input" rows="4" placeholder="A factory produces two products…"></textarea>
+      </div>
+      <div class="card">
+        <div class="card-head row">
+          <div>
+            <p class="eyebrow">Examples</p>
+            <h2>Start from a course exercise</h2>
+          </div>
+          <button id="examples-refresh" class="button button-ghost" type="button">Refresh</button>
+        </div>
+        <div id="examples-grid" class="example-grid" aria-live="polite">
+          <div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div>
+          <div class="skeleton skeleton-card"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="step-model" class="step-panel" data-panel="2">
+      <div class="card">
+        <div class="card-head row">
+          <div>
+            <p class="eyebrow">Step 2</p>
+            <h2>Model the linear program</h2>
+          </div>
+          <div class="segmented" role="tablist" aria-label="Input mode">
+            <button class="segment is-active" data-mode="text" role="tab" aria-selected="true" type="button">Text</button>
+            <button class="segment" data-mode="form" role="tab" aria-selected="false" type="button">Form</button>
+          </div>
+        </div>
+
+        <div id="mode-text">
+          <label class="field-label" for="lp-text">Type the objective and one constraint per line</label>
+          <div class="editor-wrap">
+            <div id="line-numbers" class="line-numbers" aria-hidden="true">1</div>
+            <textarea id="lp-text" class="code-editor" spellcheck="false" aria-describedby="parse-error" placeholder="Max z = 300x1 + 200x2&#10;x1 + 2x2 &lt;= 20&#10;2x1 + x2 &lt;= 22&#10;x1 + x2 &lt;= 12"></textarea>
+          </div>
+          <div id="parse-error" class="inline-error" role="alert" hidden></div>
+          <div class="card-head row under-editor">
+            <div class="understood-head">
+              <span class="dot dot-accent" aria-hidden="true"></span>
+              <h3>What I understood</h3>
+            </div>
+            <span id="parse-status" class="pill">Waiting for input</span>
+          </div>
+          <div id="understood" class="understood empty-state">
+            Start typing a model. The parsed problem appears here instantly.
+          </div>
+        </div>
+
+        <div id="mode-form" hidden>
+          <div class="form-row">
+            <label class="field-label" for="form-sense">Goal</label>
+            <select id="form-sense" class="input">
+              <option value="max">Maximise</option>
+              <option value="min">Minimise</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <div class="form-row-head"><h3>Variables</h3><button id="add-var" class="button button-ghost" type="button">+ Variable</button></div>
+            <div id="vars-grid" class="grid-form"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-row-head"><h3>Constraints</h3><button id="add-constraint" class="button button-ghost" type="button">+ Constraint</button></div>
+            <div id="constraints-grid" class="grid-form"></div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="solve-button" class="button button-primary" type="button">Solve model</button>
+          <button id="clear-button" class="button button-ghost" type="button">Clear</button>
+          <button id="load-example-button" class="button button-ghost" type="button">Load example</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="step-solve" class="step-panel" data-panel="3">
+      <div id="solve-skeleton" class="skeleton skeleton-result" hidden></div>
+      <div class="card">
+        <div class="result-tabs" role="tablist" aria-label="Result views">
+          <button class="result-tab is-active" data-tab="solution" role="tab" aria-selected="true" type="button">Solution</button>
+          <button class="result-tab" data-tab="simplex" role="tab" aria-selected="false" type="button">Simplex player</button>
+          <button class="result-tab" data-tab="graph" role="tab" aria-selected="false" type="button">Graph</button>
+          <button class="result-tab" data-tab="dual" role="tab" aria-selected="false" type="button">Dual</button>
+          <button class="result-tab" data-tab="sensitivity" role="tab" aria-selected="false" type="button">Sensitivity</button>
+        </div>
+        <div id="result-empty" class="empty-state">Solve a model to see the results here.</div>
+        <div id="result-content" hidden aria-live="polite">
+          <div id="panel-solution" class="result-panel is-active"></div>
+          <div id="panel-simplex" class="result-panel"></div>
+          <div id="panel-graph" class="result-panel"></div>
+          <div id="panel-dual" class="result-panel"></div>
+          <div id="panel-sensitivity" class="result-panel"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="step-interpret" class="step-panel" data-panel="4">
+      <div class="card">
+        <p class="eyebrow">Step 4</p>
+        <h2>Interpret the result</h2>
+        <div id="summary" class="summary empty-state">Solve a model first to get a plain-language summary.</div>
+      </div>
+      <div class="card">
+        <div class="card-head row">
+          <div><p class="eyebrow">Optional</p><h3>Our engine vs docplex</h3></div>
+          <button id="verify-button" class="button button-ghost" type="button">Compare</button>
+        </div>
+        <div id="compare" class="empty-state">docplex is optional. Comparison appears here when it is installed.</div>
+      </div>
+      <div class="actions wrap">
+        <button id="copy-button" class="button button-ghost" type="button">Copy solution</button>
+        <button id="download-button" class="button button-ghost" type="button">Download JSON</button>
+        <button id="export-button" class="button button-primary" type="button">Export report</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <div id="print-report" class="print-report"></div>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
