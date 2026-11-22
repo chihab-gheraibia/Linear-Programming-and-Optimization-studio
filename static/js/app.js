@@ -737,6 +737,17 @@ function renderGraph(result) {
   });
 }
 
+function verdictPillClass(check) {
+  if (check.verdict === "optimal") return "pill";
+  if (check.verdict === "undetermined") return "pill warn";
+  return "pill bad";
+}
+
+function dualStateText(check) {
+  if (!check.y || check.y.length === 0) return "no dual vector derived";
+  return check.dual_feasible ? "dual feasible" : "dual not feasible";
+}
+
 function renderCheckResult(check) {
   const box = $("#check-output");
   if (!box) return;
@@ -744,13 +755,13 @@ function renderCheckResult(check) {
     box.innerHTML = '<div class="empty-state">Enter a point and press Check.</div>';
     return;
   }
-  const verdictClass = check.verdict === "optimal" ? "pill" : "pill bad";
+  const verdictClass = verdictPillClass(check);
   const y = check.y ? check.y.map((value, index) => `<tr><td>y${index + 1}</td><td>${escapeHtml(value)}</td></tr>`).join("") : "";
   const steps = (check.steps || []).map((step) => `<li>${escapeHtml(typeof step === "string" ? step : JSON.stringify(step))}</li>`).join("");
   box.innerHTML = `
     <div class="card-head row">
       <span class="${verdictClass}">${escapeHtml(check.verdict)}</span>
-      <span class="muted">primal ${check.primal_feasible ? "feasible" : "not feasible"} · dual ${check.dual_feasible ? "feasible" : "not feasible"}</span>
+      <span class="muted">primal ${check.primal_feasible ? "feasible" : "not feasible"} · ${dualStateText(check)}</span>
     </div>
     ${y ? `<table class="data-table"><thead><tr><th>Dual variable</th><th>Exact value</th></tr></thead><tbody>${y}</tbody></table>` : ""}
     ${steps ? `<ul class="rule-list">${steps}</ul>` : ""}
@@ -773,6 +784,11 @@ function renderDual(dual) {
     return `<div class="shadow-card"><span class="muted">${escapeHtml(label)}</span><br><strong>${price === null ? "—" : escapeHtml(price)}</strong></div>`;
   }).join("");
   const rules = (dual.rules || []).map((rule) => `<li>${escapeHtml(rule)}</li>`).join("");
+  const alternatives = (dual.alternative_ys || []).slice(0, 2)
+    .map((vector) => `(${vector.join(", ")})`).join(" and ");
+  const degenerateNote = dual.degenerate && alternatives
+    ? `<div class="inline-hint">Degenerate primal: the dual has several optimal solutions, e.g. ${alternatives}; shadow prices are not unique.</div>`
+    : "";
   const proposed = state.proposed || (state.result && state.result.x) || [];
   panel.innerHTML = `
     <div class="dual-grid">
@@ -782,8 +798,9 @@ function renderDual(dual) {
     </div>
     <h3 style="margin-top:20px">Solution of the dual</h3>
     ${y ? `<table class="data-table"><thead><tr><th>Variable</th><th>Exact</th><th>Decimal</th></tr></thead><tbody>${y}</tbody></table>` : '<div class="empty-state">The dual has no optimal solution.</div>'}
+    ${degenerateNote}
     <div class="z-hero"><span class="value">${dual.w === null ? "—" : escapeHtml(dual.w)}</span><span class="label">w = ${dual.strong_duality ? "equals z (strong duality)" : "dual objective"}</span></div>
-    <h3>Shadow prices</h3>
+    <h3>Shadow prices (same y as the table)</h3>
     <div class="shadow-grid">${shadows || '<div class="empty-state">Not available.</div>'}</div>
     <ul class="rule-list">${rules}</ul>
     <h3 style="margin-top:20px">Complementary slackness</h3>

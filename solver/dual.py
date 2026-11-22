@@ -11,6 +11,16 @@ from .model import Constraint, F, LP, fmt
 from .simplex import mstr, solve
 
 
+def sign_symbol(sign):
+    """Print a sign restriction with the symbols used on the blackboard."""
+    return {">=0": "≥ 0", "<=0": "≤ 0", "free": "free"}[sign]
+
+
+def op_symbol(op):
+    """Print a constraint operator with the symbols used on the blackboard."""
+    return {"<=": "≤", ">=": "≥", "=": "="}[op]
+
+
 @dataclass
 class DualProblem:
     """The dual written with the original y variables and their real signs."""
@@ -31,7 +41,9 @@ class DualProblem:
 
     def sign_text(self):
         """Write the sign restrictions on one line."""
-        return ", ".join(f"{name} {sign}" for name, sign in zip(self.var_names, self.var_signs))
+        return ", ".join(
+            f"{name} {sign_symbol(sign)}" for name, sign in zip(self.var_names, self.var_signs)
+        )
 
     def to_text(self):
         """Print the dual like a course exercise statement."""
@@ -43,7 +55,7 @@ class DualProblem:
                 f"{'+' if value >= 0 else '-'} {fmt(abs(value))}{name}"
                 for value, name in zip(row, self.var_names) if value != 0
             ).lstrip("+ ")
-            symbol = {"<=": "≤", ">=": "≥", "=": "="}[op]
+            symbol = op_symbol(op)
             lines.append(f"  {line} {symbol} {fmt(rhs)}")
         lines.append(f"  {self.sign_text()}")
         return "\n".join(lines)
@@ -91,11 +103,11 @@ def explain_steps(lp, primal_signs, dual_signs, dual_ops):
     ]
     for i, (constraint, sign) in enumerate(zip(lp.constraints, dual_signs), start=1):
         rules.append(
-            f"Primal constraint {i} is '{constraint.op}', so y{i} is {sign}."
+            f"Primal constraint {i} is '{op_symbol(constraint.op)}', so y{i} is {sign_symbol(sign)}."
         )
     for j, (name, sign, op) in enumerate(zip(lp.var_names, primal_signs, dual_ops), start=1):
         rules.append(
-            f"Primal variable {name} is {sign}, so dual constraint {j} uses '{op}'."
+            f"Primal variable {name} is {sign_symbol(sign)}, so dual constraint {j} uses '{op_symbol(op)}'."
         )
     return rules
 
@@ -197,20 +209,62 @@ def shadow_prices(lp, result):
     return prices
 
 
+def y_is_dual_feasible(dual, y):
+    """Check one displayed dual vector against signs and all dual constraints."""
+    if y is None or len(y) != len(dual.var_names):
+        return False
+    for sign, value in zip(dual.var_signs, y):
+        if sign == ">=0" and value < 0:
+            return False
+        if sign == "<=0" and value > 0:
+            return False
+    for row, op, rhs in zip(dual.A, dual.ops, dual.b):
+        left = sum((coefficient * value for coefficient, value in zip(row, y)), F(0))
+        if op == ">=" and left < rhs:
+            return False
+        if op == "<=" and left > rhs:
+            return False
+        if op == "=" and left != rhs:
+            return False
+    return True
+
+
+def alternative_dual_solutions(dual, candidates, expected_z=None):
+    """Keep the distinct optimal dual vertices supplied by the two methods."""
+    kept = []
+    for candidate in candidates:
+        if not y_is_dual_feasible(dual, candidate):
+            continue
+        if expected_z is not None and dual.evaluate(candidate) != expected_z:
+            continue
+        if any(list(other) == list(candidate) for other in kept):
+            continue
+        kept.append([F(value) for value in candidate])
+    return kept
+
+
 def dual_solution(lp, primal_result=None, primal_var_signs=None):
-    """Solve the dual and return y, w, the rules and the shadow prices."""
+    """Solve the dual and return y, w, the rules and consistent shadow prices."""
+    if primal_result is None:
+        primal_result = solve(lp)
     dual = dualize(lp, primal_var_signs)
     solvable, substitutions = dual_to_lp(dual)
     solved = solve(solvable)
     y = recover_y(substitutions, solved.x) if solved.status == "optimal" else None
     w = dual.evaluate(y) if y is not None else None
+    tableau_y = shadow_prices(lp, primal_result)
+    canonical = list(y) if y is not None else list(tableau_y)
+    alternatives = alternative_dual_solutions(dual, [tableau_y, y], primal_result.z)
     return {
         "dual": dual,
         "solution": solved,
         "y": y,
         "w": w,
         "rules": dual.rules,
-        "shadow_prices": shadow_prices(lp, primal_result),
+        "shadow_prices": canonical,
+        "tableau_y": tableau_y,
+        "alternative_ys": alternatives,
+        "degenerate": bool(primal_result.degenerate),
     }
 
 
@@ -225,7 +279,14 @@ def dual_solution_to_dict(info):
         "w": None if w is None else mstr(w),
         "w_float": None if w is None else float(w),
         "rules": info["rules"],
+        "degenerate": info.get("degenerate", False),
         "shadow_prices": [
             None if price is None else mstr(price) for price in info["shadow_prices"]
+        ],
+        "tableau_y": [
+            None if value is None else mstr(value) for value in info.get("tableau_y", [])
+        ],
+        "alternative_ys": [
+            [mstr(value) for value in vector] for vector in info.get("alternative_ys", [])
         ],
     }

@@ -405,6 +405,28 @@ def test_f_what_if():
     assert F(different["z"]) != F(3900)
 
 
+def test_g_degenerate_dual_consistency():
+    """G: degenerate duals expose both extreme y values with one canonical y."""
+    lp = parse_lp(EXAMPLES["td1_p1_ex1"]["text"])
+    primal = solve(lp)
+    info = dual_solution(lp, primal)
+    assert primal.degenerate is True
+    assert info["y"] == [F(0), Fraction(1000, 3)]
+    assert info["tableau_y"] == [F(400), F(0)]
+    assert info["shadow_prices"] == info["y"]
+    assert info["alternative_ys"] == [[F(400), F(0)], [F(0), Fraction(1000, 3)]]
+    assert "y1 ≥ 0, y2 ≥ 0" in info["dual"].to_text()
+
+    payload = create_app().test_client().post(
+        "/api/dual", json={"text": EXAMPLES["td1_p1_ex1"]["text"]}
+    ).get_json()
+    assert payload["degenerate"] is True
+    assert payload["shadow_prices"] == payload["y"]
+    assert payload["alternative_ys"] == [["400", "0"], ["0", "1000/3"]]
+    assert "≥ 4000" in payload["dual"]["text"]
+    assert all(">=0" not in rule for rule in payload["rules"])
+
+
 def test_g_examples_api_contract():
     """G: the examples endpoint is a list of complete example cards."""
     payload = create_app().test_client().get("/api/examples").get_json()
