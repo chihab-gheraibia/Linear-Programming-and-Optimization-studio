@@ -239,5 +239,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   .print-report { display: block; }
   .print-report h1, .print-report h2 { margin-top: 18px; }
   .print-report pre { white-space: pre-wrap; font-family: var(--mono); }
+  .print-report table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+  .print-report th, .print-report td { border: 1px solid #999; padding: 5px; text-align: left; }
   .print-report svg { max-width: 100%; }
 }

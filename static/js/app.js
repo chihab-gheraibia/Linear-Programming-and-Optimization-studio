@@ -789,3 +789,229 @@ function renderDual(dual) {
     }
   });
 }
+
+function exactNumber(value) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  const fraction = text.match(/^([+-]?\d+)\/(\d+)$/);
+  if (fraction) return Number(fraction[1]) / Number(fraction[2]);
+  const number = Number(text);
+  return Number.isFinite(number) ? number : null;
+}
+
+function rangeBar(row, suffix) {
+  const current = exactNumber(row.current) ?? 0;
+  const fallback = Math.max(Math.abs(current) * 0.5, 1);
+  let lower = exactNumber(row.lower);
+  let upper = exactNumber(row.upper);
+  if (lower === null) lower = current - fallback;
+  if (upper === null) upper = current + fallback;
+  let domainMin = Math.min(lower, current);
+  let domainMax = Math.max(upper, current);
+  const padding = (domainMax - domainMin) * 0.08 || 1;
+  domainMin -= padding;
+  domainMax += padding;
+  const percent = (value) => Math.max(0, Math.min(100, ((value - domainMin) / (domainMax - domainMin)) * 100));
+  const left = percent(lower);
+  const right = percent(upper);
+  return `
+    <div class="range-row">
+      <strong>${pretty(row.name)}</strong>
+      <div class="range-bar" title="${escapeHtml(`${row.lower ?? "−∞"} to ${row.upper ?? "+∞"}`)}">
+        <span class="fill" style="left:${left}%;width:${Math.max(right - left, 1)}%"></span>
+        <span class="marker" style="left:${percent(current)}%"></span>
+      </div>
+      <span class="range-value">now ${escapeHtml(row.current)}<br>${escapeHtml(row.lower ?? "−∞")} … ${escapeHtml(row.upper ?? "+∞")}${suffix}</span>
+    </div>
+  `;
+}
+
+function updateWhatIfOptions() {
+  const kind = $("#whatif-kind").value;
+  const rows = kind === "c" ? state.sensitivity.objective : state.sensitivity.rhs;
+  const select = $("#whatif-index");
+  select.innerHTML = rows.map((row, index) => `<option value="${index}">${escapeHtml(row.name)}</option>`).join("");
+  updateWhatIfRange();
+}
+
+function updateWhatIfRange() {
+  const kind = $("#whatif-kind").value;
+  const index = Number($("#whatif-index").value || 0);
+  const rows = kind === "c" ? state.sensitivity.objective : state.sensitivity.rhs;
+  const row = rows[index];
+  const current = exactNumber(row.current) ?? 0;
+  const fallback = Math.max(Math.abs(current), 1);
+  const min = exactNumber(row.lower) ?? current - fallback;
+  const max = exactNumber(row.upper) ?? current + fallback;
+  $("#whatif-range").min = min;
+  $("#whatif-range").max = max;
+  $("#whatif-range").step = Math.max((max - min) / 200, 1e-6);
+  $("#whatif-range").value = current;
+  $("#whatif-value").value = row.current;
+  $("#whatif-output").innerHTML = '<div class="empty-state">Move the slider to see the exact result.</div>';
+}
+
+const runWhatIf = debounce(async () => {
+  const payload = state.mode === "text" ? { text: $("#lp-text").value } : formToPayload();
+  payload.kind = $("#whatif-kind").value;
+  payload.index = Number($("#whatif-index").value || 0);
+  payload.new_value = $("#whatif-value").value;
+  try {
+    const answer = await api("/api/whatif", payload);
+    const variables = (state.model ? state.model.var_names : []).map((name, index) => `
+      <tr><td>${pretty(name)}</td><td>${escapeHtml(answer.x[index])}</td></tr>
+    `).join("");
+    $("#whatif-output").innerHTML = `
+      <div class="card-head row"><span class="pill ${answer.basis_changed ? "warn" : ""}">${escapeHtml(answer.message)}</span><strong>z = ${escapeHtml(answer.z)}</strong></div>
+      <table class="data-table"><thead><tr><th>Variable</th><th>New exact value</th></tr></thead><tbody>${variables}</tbody></table>
+    `;
+  } catch (error) {
+    $("#whatif-output").innerHTML = `<div class="inline-error">${escapeHtml(error.message)}</div>`;
+  }
+}, 280);
+
+function renderSensitivity(sensitivity) {
+  const panel = $("#panel-sensitivity");
+  if (!sensitivity) {
+    panel.innerHTML = '<div class="empty-state">Sensitivity needs an optimal solution.</div>';
+    return;
+  }
+  const objective = sensitivity.objective.map((row) => rangeBar(row, "")).join("");
+  const rhs = sensitivity.rhs.map((row) => rangeBar(row, "")).join("");
+  panel.innerHTML = `
+    <h3>Optimality ranges for objective coefficients cⱼ</h3>
+    <p class="muted">Inside the band the current basis and x stay the same; z moves linearly.</p>
+    ${objective}
+    <h3 style="margin-top:24px">Validity ranges for right-hand sides bᵢ</h3>
+    <p class="muted">Inside the band the shadow price stays valid. Binding rows have a non-zero price.</p>
+    ${rhs}
+    <h3 style="margin-top:24px">What if one number changes?</h3>
+    <div class="form-line" style="grid-template-columns:120px 1fr 1fr auto">
+      <select id="whatif-kind" class="mini-input" aria-label="Coefficient kind">
+        <option value="c">Objective cⱼ</option><option value="b">Right-hand bᵢ</option>
+      </select>
+      <select id="whatif-index" class="mini-input" aria-label="Coefficient index"></select>
+      <input id="whatif-value" class="mini-input" aria-label="New value">
+      <span class="muted">new value</span>
+    </div>
+    <div class="slider-row"><span class="muted">Drag</span><input id="whatif-range" type="range" aria-label="New coefficient value"><span class="muted">exact input ↑</span></div>
+    <div id="whatif-output" style="margin-top:12px"></div>
+  `;
+  $("#whatif-kind").addEventListener("change", updateWhatIfOptions);
+  $("#whatif-index").addEventListener("change", updateWhatIfRange);
+  $("#whatif-value").addEventListener("input", () => {
+    $("#whatif-range").value = $("#whatif-value").value;
+    runWhatIf();
+  });
+  $("#whatif-range").addEventListener("input", () => {
+    $("#whatif-value").value = $("#whatif-range").value;
+    runWhatIf();
+  });
+  updateWhatIfOptions();
+}
+
+function summaryText() {
+  if (!state.result) return "No model has been solved yet.";
+  const result = state.result;
+  const names = state.model ? state.model.var_names : [];
+  const variables = result.x ? result.x.map((value, index) => `${names[index] || `x${index + 1}`} = ${value}`).join(", ") : "none";
+  let text = `${statusLabel(result.status)}. Optimal value z = ${result.z ?? "—"}. Decision variables: ${variables}.\n`;
+  if (result.status === "optimal" && state.sensitivity) {
+    const binding = state.sensitivity.rhs.filter((row) => (exactNumber(row.shadow_price) || 0) !== 0);
+    text += binding.length
+      ? `Binding constraints: ${binding.map((row) => row.name).join(", ")}; each extra unit changes z by its shadow price.\n`
+      : "No constraint is binding, so small resource changes do not change z.\n";
+  }
+  if (result.multiple_optima) text += "Other optimal solutions exist on a whole segment.\n";
+  if (result.degenerate) text += "The basic solution is degenerate (a basic variable equals zero).\n";
+  if (state.dual && state.dual.strong_duality) text += `The dual confirms the result: w = ${state.dual.w} equals z.\n`;
+  return text;
+}
+
+function renderCompare(data) {
+  const box = $("#compare");
+  if (!box) return;
+  if (!data || data.available === false) {
+    box.innerHTML = `<div class="empty-state">${escapeHtml(data?.error || "docplex is not installed.")} Install it with <code>pip install docplex</code> to enable this panel.</div>`;
+    return;
+  }
+  box.innerHTML = `
+    <div class="card-head row"><span class="match-badge">${data.match ? "Results match" : "Results differ"}</span><span class="muted">${Number(data.docplex.time_ms).toFixed(1)} ms</span></div>
+    <table class="data-table"><thead><tr><th>Solver</th><th>Status</th><th>z</th><th>Iterations</th></tr></thead><tbody>
+      <tr><td>Our engine (Fraction + Big-M)</td><td>optimal</td><td>${escapeHtml(data.ours.z)}</td><td>${data.ours.iterations}</td></tr>
+      <tr><td>docplex / CPLEX</td><td>${escapeHtml(data.docplex.status)}</td><td>${escapeHtml(data.docplex.z ?? "—")}</td><td>${data.docplex.iterations ?? "—"}</td></tr>
+    </tbody></table>
+  `;
+}
+
+function renderInterpret() {
+  const summary = $("#summary");
+  if (!summary) return;
+  summary.className = "summary";
+  summary.innerHTML = summaryText().trim().split("\n").map((line) => `<p>${escapeHtml(line)}</p>`).join("");
+}
+
+async function compareSolvers() {
+  const payload = state.mode === "text" ? { text: $("#lp-text").value } : formToPayload();
+  try {
+    const response = await fetch("/api/verify", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+    state.compare = await response.json();
+    renderCompare(state.compare);
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+function reportHtml() {
+  const modelText = state.model ? `${state.model.sense === "max" ? "Maximise" : "Minimise"} z = ${state.model.c.map((value, index) => `${value} ${state.model.var_names[index]}`).join(" + ")}\n${state.model.constraints.map((row) => row.text).join("\n")}` : "";
+  const steps = state.result?.steps || [];
+  const last = steps[steps.length - 1];
+  const tableau = last ? renderTableau(last) : "";
+  const graph = $("#panel-graph .graph-svg") ? $("#panel-graph .graph-svg").outerHTML : "";
+  const ranges = state.sensitivity ? ["objective", "rhs"].map((kind) => `
+    <h2>${kind === "objective" ? "Objective ranges" : "Right-hand-side ranges"}</h2>
+    <table><thead><tr><th>Name</th><th>Current</th><th>Lower</th><th>Upper</th></tr></thead><tbody>
+      ${state.sensitivity[kind].map((row) => `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.current)}</td><td>${escapeHtml(row.lower ?? "−∞")}</td><td>${escapeHtml(row.upper ?? "+∞")}</td></tr>`).join("")}
+    </tbody></table>
+  `).join("") : "";
+  return `
+    <h1>LP Studio — solution report</h1>
+    <p><strong>Problem notes:</strong> ${escapeHtml($("#problem-notes").value || "—")}</p>
+    <h2>Model</h2><pre>${escapeHtml(modelText)}</pre>
+    <h2>Solution</h2><pre>${escapeHtml(summaryText())}</pre>
+    <h2>Final simplex tableau</h2>${tableau}
+    ${graph ? `<h2>Graphical view</h2>${graph}` : ""}
+    ${ranges}
+  `;
+}
+
+function bindOutputEvents() {
+  $("#verify-button").addEventListener("click", compareSolvers);
+  $("#copy-button").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(summaryText());
+      toast("Solution copied.", "success");
+    } catch (error) {
+      toast("Clipboard unavailable in this browser.", "error");
+    }
+  });
+  $("#download-button").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify({
+      model: state.model, result: state.result, dual: state.dual,
+      sensitivity: state.sensitivity, compare: state.compare,
+    }, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "lp-studio-solution.json";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  });
+  $("#export-button").addEventListener("click", () => {
+    $("#print-report").innerHTML = reportHtml();
+    window.print();
+  });
+}
+
+document.addEventListener("DOMContentLoaded", bindOutputEvents);
