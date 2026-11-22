@@ -720,3 +720,72 @@ function renderGraph(result) {
     updateObjective(state.graphK);
   });
 }
+
+function renderCheckResult(check) {
+  const box = $("#check-output");
+  if (!box) return;
+  if (!check) {
+    box.innerHTML = '<div class="empty-state">Enter a point and press Check.</div>';
+    return;
+  }
+  const verdictClass = check.verdict === "optimal" ? "pill" : "pill bad";
+  const y = check.y ? check.y.map((value, index) => `<tr><td>y${index + 1}</td><td>${escapeHtml(value)}</td></tr>`).join("") : "";
+  const steps = (check.steps || []).map((step) => `<li>${escapeHtml(typeof step === "string" ? step : JSON.stringify(step))}</li>`).join("");
+  box.innerHTML = `
+    <div class="card-head row">
+      <span class="${verdictClass}">${escapeHtml(check.verdict)}</span>
+      <span class="muted">primal ${check.primal_feasible ? "feasible" : "not feasible"} · dual ${check.dual_feasible ? "feasible" : "not feasible"}</span>
+    </div>
+    ${y ? `<table class="data-table"><thead><tr><th>Dual variable</th><th>Exact value</th></tr></thead><tbody>${y}</tbody></table>` : ""}
+    ${steps ? `<ul class="rule-list">${steps}</ul>` : ""}
+  `;
+}
+
+function renderDual(dual) {
+  const panel = $("#panel-dual");
+  if (!dual) {
+    panel.innerHTML = '<div class="empty-state">The dual is unavailable for this model.</div>';
+    return;
+  }
+  const primalText = state.model
+    ? `${state.model.sense === "max" ? "Max" : "Min"} z = ${state.model.c.map((value, index) => `${value}${state.model.var_names[index]}`).join(" + ")}\n${state.model.constraints.map((row) => row.text).join("\n")}`
+    : "";
+  const y = dual.y ? dual.y.map((value, index) => `<tr><td>${pretty(dual.dual.var_names[index])}</td><td>${escapeHtml(value)}</td><td>${Number(dual.y_float[index]).toFixed(6)}</td></tr>`).join("") : "";
+  const shadows = dual.shadow_prices.map((price, index) => {
+    const label = state.model && state.model.constraints[index]
+      ? state.model.constraints[index].text : `Constraint ${index + 1}`;
+    return `<div class="shadow-card"><span class="muted">${escapeHtml(label)}</span><br><strong>${price === null ? "—" : escapeHtml(price)}</strong></div>`;
+  }).join("");
+  const rules = (dual.rules || []).map((rule) => `<li>${escapeHtml(rule)}</li>`).join("");
+  const proposed = state.proposed || (state.result && state.result.x) || [];
+  panel.innerHTML = `
+    <div class="dual-grid">
+      <div class="dual-card primal"><h3>Primal</h3><pre>${escapeHtml(primalText)}</pre></div>
+      <div class="dual-arrows" aria-hidden="true">Aᵀ ⟷ c<br>b ⟷ cᵀ<br>≤ ⟷ ≥</div>
+      <div class="dual-card dual-problem"><h3>Dual</h3><pre>${escapeHtml(dual.dual.text)}</pre></div>
+    </div>
+    <h3 style="margin-top:20px">Solution of the dual</h3>
+    ${y ? `<table class="data-table"><thead><tr><th>Variable</th><th>Exact</th><th>Decimal</th></tr></thead><tbody>${y}</tbody></table>` : '<div class="empty-state">The dual has no optimal solution.</div>'}
+    <div class="z-hero"><span class="value">${dual.w === null ? "—" : escapeHtml(dual.w)}</span><span class="label">w = ${dual.strong_duality ? "equals z (strong duality)" : "dual objective"}</span></div>
+    <h3>Shadow prices</h3>
+    <div class="shadow-grid">${shadows || '<div class="empty-state">Not available.</div>'}</div>
+    <ul class="rule-list">${rules}</ul>
+    <h3 style="margin-top:20px">Complementary slackness</h3>
+    <label class="field-label" for="check-input">Proposed x values (comma separated)</label>
+    <div class="row">
+      <input id="check-input" class="input" value="${escapeHtml(proposed.join(", "))}" placeholder="0, 4/3, 2/3">
+      <button id="check-button" class="button button-primary" type="button">Check</button>
+    </div>
+    <div id="check-output" style="margin-top:12px"></div>
+  `;
+  renderCheckResult(null);
+  $("#check-button").addEventListener("click", async () => {
+    const payload = state.mode === "text" ? { text: $("#lp-text").value } : formToPayload();
+    payload.x = $("#check-input").value.split(/[\s,;]+/).filter(Boolean);
+    try {
+      renderCheckResult(await api("/api/check", payload));
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  });
+}
