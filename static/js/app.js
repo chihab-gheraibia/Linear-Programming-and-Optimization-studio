@@ -9,6 +9,7 @@ const state = {
   sensitivity: null,
   compare: null,
   mode: "text",
+  hints: [],
   theme: "light",
   parseToken: 0,
 };
@@ -25,6 +26,14 @@ function escapeHtml(value) {
 function pretty(value) {
   const text = String(value);
   return text.replace(/(\d+)$/, "<sub>$1</sub>");
+}
+
+function hintHtml(hints) {
+  return (hints || []).map((hint) => `<div class="lp-line hint-line">${escapeHtml(hint)}</div>`).join("");
+}
+
+function objectiveLabel(sense) {
+  return sense === "min" ? "minimum of z" : "maximum of z";
 }
 
 async function api(path, body) {
@@ -50,6 +59,22 @@ function toast(message, kind = "") {
   node.textContent = message;
   $("#toasts").appendChild(node);
   setTimeout(() => node.remove(), 4200);
+}
+
+function requireResult() {
+  if (!state.result) {
+    toast("Solve a model first", "error");
+    return false;
+  }
+  return true;
+}
+
+function formatDecimal(value, digits = 6) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return String(value ?? "—");
+  const text = number.toFixed(digits);
+  const trimmed = text.includes(".") ? text.replace(/0+$/, "").replace(/\.$/, "") : text;
+  return trimmed === "-0" ? "0" : trimmed;
 }
 
 function setTheme(theme) {
@@ -137,6 +162,7 @@ function renderUnderstood() {
     <div class="lp-line"><strong>${escapeHtml(objective)}</strong></div>
     ${rows}
     <div class="lp-line muted">${model.var_names.map((name) => pretty(name)).join(", ")} ≥ 0</div>
+    ${hintHtml(state.hints)}
   `;
   $("#parse-status").textContent = `${model.var_names.length} variable${model.var_names.length === 1 ? "" : "s"} · ${model.constraints.length} constraint${model.constraints.length === 1 ? "" : "s"}`;
   $("#parse-status").className = "pill";
@@ -147,6 +173,7 @@ async function parseModel(showErrors = false) {
   const text = $("#lp-text").value.trim();
   if (!text) {
     state.model = null;
+    state.hints = [];
     $("#understood").className = "understood empty-state";
     $("#understood").textContent = "Start typing a model. The parsed problem appears here instantly.";
     $("#parse-status").textContent = "Waiting for input";
@@ -158,6 +185,7 @@ async function parseModel(showErrors = false) {
     const data = await api("/api/parse", { text });
     if (token !== state.parseToken) return false;
     state.model = data.model;
+    state.hints = data.hints || [];
     $("#understood").className = "understood";
     renderUnderstood();
     if (state.mode === "form") renderForm(data.model);
@@ -345,6 +373,7 @@ async function solveModel() {
     try {
       const data = await api("/api/parse", formToPayload());
       state.model = data.model;
+      state.hints = [];
       renderUnderstood();
       modelReady = true;
     } catch (error) {
@@ -362,6 +391,7 @@ async function solveModel() {
   try {
     const result = await api("/api/solve", payload);
     state.result = result;
+    state.hints = result.hints || [];
     const dualRequest = api("/api/dual", payload).catch(() => null);
     const sensitivityRequest = api("/api/sensitivity", payload).catch(() => null);
     const [dual, sensitivity] = await Promise.all([dualRequest, sensitivityRequest]);
@@ -395,6 +425,7 @@ function clearAll() {
   $("#lp-text").value = "";
   $("#problem-notes").value = "";
   state.model = null;
+  state.hints = [];
   state.result = null;
   state.dual = null;
   state.sensitivity = null;
@@ -487,7 +518,7 @@ function renderSolution(result) {
   if (!result) return;
   const names = state.model ? state.model.var_names : (result.x || []).map((_, index) => `x${index + 1}`);
   const variables = result.x ? result.x.map((value, index) => `
-    <tr><td>${pretty(names[index] || `x${index + 1}`)}</td><td>${escapeHtml(value)}</td><td>${Number(result.x_float[index]).toFixed(6)}</td></tr>
+    <tr><td>${pretty(names[index] || `x${index + 1}`)}</td><td>${escapeHtml(value)}</td><td>${formatDecimal(result.x_float[index])}</td></tr>
   `).join("") : "";
   const flags = [
     result.degenerate ? '<span class="pill warn">Degenerate</span>' : "",
@@ -501,7 +532,7 @@ function renderSolution(result) {
       <span class="muted">${result.iterations} iteration${result.iterations === 1 ? "" : "s"}</span>
     </div>
     ${result.z === null ? `<div class="empty-state">${escapeHtml((result.notes || []).join(" ") || "No objective value for this status.")}</div>` : `
-      <div class="z-hero"><span class="value">${escapeHtml(result.z)}</span><span class="label">= maximum / minimum of z (exact)</span></div>
+      <div class="z-hero"><span class="value">${escapeHtml(result.z)}</span><span class="label">= ${objectiveLabel(state.model ? state.model.sense : "max")} (exact)</span></div>
       <table class="data-table"><thead><tr><th>Variable</th><th>Exact value</th><th>Decimal</th></tr></thead><tbody>${variables}</tbody></table>
     `}
     <div class="flag-row">${flags}</div>
@@ -713,7 +744,7 @@ function renderGraph(result) {
     <div class="slider-row">
       <label for="objective-slider">Objective z</label>
       <input id="objective-slider" type="range" min="${kMin}" max="${kMax}" step="${(kMax - kMin) / 200}" value="${startK}">
-      <span id="objective-value" class="range-value">z = ${Number(startK).toFixed(2)}</span>
+      <span id="objective-value" class="range-value">z = ${formatDecimal(startK)}</span>
     </div>
     <p class="muted">${g.region_bounded ? "The feasible region is bounded; the optimum is at a vertex." : "The feasible region is unbounded; the arrow of improving z never stops."}</p>
   `;
@@ -727,8 +758,8 @@ function renderGraph(result) {
     objectiveLine.setAttribute("y1", ends[0][1]);
     objectiveLine.setAttribute("x2", ends[1][0]);
     objectiveLine.setAttribute("y2", ends[1][1]);
-    objectiveLabel.textContent = `z = ${Number(k).toFixed(2)}`;
-    objectiveValue.textContent = `z = ${Number(k).toFixed(2)}`;
+    objectiveLabel.textContent = `z = ${formatDecimal(k)}`;
+    objectiveValue.textContent = `z = ${formatDecimal(k)}`;
   };
   updateObjective(startK);
   $("#objective-slider").addEventListener("input", (event) => {
@@ -768,6 +799,13 @@ function renderCheckResult(check) {
   `;
 }
 
+function degenerateDualNote(dual) {
+  if (!dual || !dual.degenerate || !dual.alternative_ys || dual.alternative_ys.length < 2) return "";
+  const examples = dual.alternative_ys.slice(0, 2)
+    .map((vector) => `(${vector.join(", ")})`).join(" and ");
+  return `Degenerate primal: the dual has several optimal solutions, e.g. ${examples}; shadow prices are not unique.`;
+}
+
 function renderDual(dual) {
   const panel = $("#panel-dual");
   if (!dual) {
@@ -777,18 +815,15 @@ function renderDual(dual) {
   const primalText = state.model
     ? `${state.model.sense === "max" ? "Max" : "Min"} z = ${state.model.c.map((value, index) => `${value}${state.model.var_names[index]}`).join(" + ")}\n${state.model.constraints.map((row) => row.text).join("\n")}`
     : "";
-  const y = dual.y ? dual.y.map((value, index) => `<tr><td>${pretty(dual.dual.var_names[index])}</td><td>${escapeHtml(value)}</td><td>${Number(dual.y_float[index]).toFixed(6)}</td></tr>`).join("") : "";
+  const y = dual.y ? dual.y.map((value, index) => `<tr><td>${pretty(dual.dual.var_names[index])}</td><td>${escapeHtml(value)}</td><td>${formatDecimal(dual.y_float[index])}</td></tr>`).join("") : "";
   const shadows = dual.shadow_prices.map((price, index) => {
     const label = state.model && state.model.constraints[index]
       ? state.model.constraints[index].text : `Constraint ${index + 1}`;
     return `<div class="shadow-card"><span class="muted">${escapeHtml(label)}</span><br><strong>${price === null ? "—" : escapeHtml(price)}</strong></div>`;
   }).join("");
   const rules = (dual.rules || []).map((rule) => `<li>${escapeHtml(rule)}</li>`).join("");
-  const alternatives = (dual.alternative_ys || []).slice(0, 2)
-    .map((vector) => `(${vector.join(", ")})`).join(" and ");
-  const degenerateNote = dual.degenerate && alternatives
-    ? `<div class="inline-hint">Degenerate primal: the dual has several optimal solutions, e.g. ${alternatives}; shadow prices are not unique.</div>`
-    : "";
+  const note = degenerateDualNote(dual);
+  const degenerateNote = note ? `<div class="inline-hint">${escapeHtml(note)}</div>` : "";
   const proposed = state.proposed || (state.result && state.result.x) || [];
   panel.innerHTML = `
     <div class="dual-grid">
@@ -969,7 +1004,7 @@ function renderCompare(data) {
     return;
   }
   box.innerHTML = `
-    <div class="card-head row"><span class="match-badge">${data.match ? "Results match" : "Results differ"}</span><span class="muted">${Number(data.docplex.time_ms).toFixed(1)} ms</span></div>
+    <div class="card-head row"><span class="match-badge">${data.match ? "Results match" : "Results differ"}</span><span class="muted">${formatDecimal(data.docplex.time_ms, 3)} ms</span></div>
     <table class="data-table"><thead><tr><th>Solver</th><th>Status</th><th>z</th><th>Iterations</th></tr></thead><tbody>
       <tr><td>Our engine (Fraction + Big-M)</td><td>optimal</td><td>${escapeHtml(data.ours.z)}</td><td>${data.ours.iterations}</td></tr>
       <tr><td>docplex / CPLEX</td><td>${escapeHtml(data.docplex.status)}</td><td>${escapeHtml(data.docplex.z ?? "—")}</td><td>${data.docplex.iterations ?? "—"}</td></tr>
@@ -1023,6 +1058,7 @@ function reportHtml() {
 function bindOutputEvents() {
   $("#verify-button").addEventListener("click", compareSolvers);
   $("#copy-button").addEventListener("click", async () => {
+    if (!requireResult()) return;
     try {
       await navigator.clipboard.writeText(summaryText());
       toast("Solution copied.", "success");
@@ -1031,6 +1067,7 @@ function bindOutputEvents() {
     }
   });
   $("#download-button").addEventListener("click", () => {
+    if (!requireResult()) return;
     const blob = new Blob([JSON.stringify({
       model: state.model, result: state.result, dual: state.dual,
       sensitivity: state.sensitivity, compare: state.compare,
@@ -1042,6 +1079,7 @@ function bindOutputEvents() {
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   });
   $("#export-button").addEventListener("click", () => {
+    if (!requireResult()) return;
     $("#print-report").innerHTML = reportHtml();
     window.print();
   });

@@ -135,6 +135,7 @@ h3 { font-size: 1rem; }
 .pill.bad { background: var(--danger-soft); color: var(--danger); }
 .understood { border: 1px dashed var(--border); border-radius: 12px; padding: 14px; background: var(--surface-2); }
 .understood .lp-line { font-family: var(--mono); margin: 4px 0; }
+.understood .hint-line { color: var(--warning); font-size: .82rem; }
 .understood sub { font-size: .7em; }
 
 .form-row { margin-bottom: 18px; }

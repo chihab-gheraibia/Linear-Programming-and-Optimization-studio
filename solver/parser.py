@@ -66,6 +66,21 @@ def normalize_operator(text: str) -> str:
     return OPERATORS[text]
 
 
+def operator_hints(text: str):
+    """Report loose '<' or '>' tokens that are interpreted as ≤ or ≥."""
+    hints = []
+    for token in OPERATOR_RE.findall(text):
+        if token == "<":
+            hint = "'<' is treated as '<='"
+        elif token == ">":
+            hint = "'>' is treated as '>='"
+        else:
+            continue
+        if hint not in hints:
+            hints.append(hint)
+    return hints
+
+
 def parse_expression(text: str, line_no: int):
     """Read one sum of signed terms and return coefficients plus a constant.
 

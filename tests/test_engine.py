@@ -6,20 +6,21 @@ Ex4 claims 148, which is the maximum; the requested minimum is 100.
 The values below are the correct ones.
 """
 
+import subprocess
 import sys
 from fractions import Fraction
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app import create_app
+from app import create_app, fmt_decimal
 from solver.complementary import check_optimality
 from solver.dual import dual_solution, dualize, shadow_prices
 from solver.examples import EXAMPLES, get_example
 from solver.graphical import solve_graphical
 from solver.sensitivity import cost_interval, rhs_interval, what_if
 from solver.model import F, fmt
-from solver.parser import ParseError, parse_lp
+from solver.parser import ParseError, operator_hints, parse_lp
 from solver.simplex import MNum, solve
 
 
@@ -439,6 +440,31 @@ def test_g_examples_api_contract():
         assert isinstance(item["title"], str) and item["title"]
         assert isinstance(item["description"], str)
         assert isinstance(item["text"], str) and "z =" in item["text"]
+
+
+def test_g_parser_hints_and_decimals():
+    """G: loose operators are explained and decimals are short in the API."""
+    hints = operator_hints("Max z = x\nx1 < 3\nx2 > 4\nx3 <= 5\nx4 >= 6")
+    assert hints == ["'<' is treated as '<='", "'>' is treated as '>='"]
+    assert operator_hints("Max z = x\nx1 ≤ 3\nx2 ≥ 4") == []
+    client = create_app().test_client()
+    parsed = client.post("/api/parse", json={"text": "Max z = x\nx1 < 3"}).get_json()
+    assert parsed["hints"] == ["'<' is treated as '<='"]
+    solved = client.post("/api/solve", json={"text": "Max z = x1\nx1 <= 1000/3"}).get_json()
+    assert solved["z_display"] == "333.333333"
+    assert solved["x_display"] == ["333.333333"]
+    assert fmt_decimal(5) == "5"
+    assert fmt_decimal(None) is None
+
+
+def test_g_editor_placeholder_and_frontend_helpers():
+    """G: the editor is clearly an example and JS helpers behave as expected."""
+    html = (Path(__file__).resolve().parents[1] / "templates" / "index.html").read_text(encoding="utf-8")
+    assert "Example (click 'Load example')" in html
+    script = Path(__file__).resolve().with_name("test_frontend.js")
+    completed = subprocess.run(["node", str(script)], capture_output=True, text=True)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "frontend helper tests passed" in completed.stdout
 
 
 if __name__ == "__main__":

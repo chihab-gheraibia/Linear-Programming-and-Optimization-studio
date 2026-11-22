@@ -14,7 +14,7 @@ from solver.dual import dual_solution, dual_solution_to_dict
 from solver.examples import list_examples
 from solver.graphical import graphical_to_dict, solve_graphical
 from solver.model import LP, fmt
-from solver.parser import parse_lp
+from solver.parser import operator_hints, parse_lp
 from solver.sensitivity import sensitivity_report, what_if
 from solver.simplex import solve
 from solver.verify_docplex import solve_with_docplex
@@ -31,6 +31,14 @@ def jsonable(value):
     if hasattr(value, "a") and hasattr(value, "b"):
         return str(value)
     return str(value)
+
+
+def fmt_decimal(value):
+    """Print a decimal with at most six digits and no trailing zeros."""
+    if value is None:
+        return None
+    text = f"{float(value):.6f}".rstrip("0").rstrip(".")
+    return "0" if text in ("", "-0") else text
 
 
 def ok_response(**payload):
@@ -91,16 +99,22 @@ def create_app():
     @app.route("/api/parse", methods=["POST"])
     def api_parse():
         """Echo the model that the parser understood."""
-        lp = load_model(request_data())
-        return ok_response(model=lp.to_dict())
+        data = request_data()
+        lp = load_model(data)
+        hints = operator_hints(data["text"]) if isinstance(data.get("text"), str) else []
+        return ok_response(model=lp.to_dict(), hints=hints)
 
     @app.route("/api/solve", methods=["POST"])
     def api_solve():
         """Solve with the simplex and, when possible, with the graphical method."""
-        lp = load_model(request_data())
+        data = request_data()
+        lp = load_model(data)
         result = solve(lp)
         payload = result.to_dict()
         payload["model"] = lp.to_dict()
+        payload["hints"] = operator_hints(data["text"]) if isinstance(data.get("text"), str) else []
+        payload["z_display"] = fmt_decimal(payload["z_float"])
+        payload["x_display"] = None if payload["x_float"] is None else [fmt_decimal(value) for value in payload["x_float"]]
         payload["graphical"] = None
         if lp.n == 2:
             payload["graphical"] = graphical_to_dict(solve_graphical(lp), lp)
@@ -119,6 +133,9 @@ def create_app():
         )
         payload["z_primal"] = None if primal.z is None else fmt(primal.z)
         payload["z_float"] = None if primal.z is None else float(primal.z)
+        payload["z_display"] = fmt_decimal(payload["z_float"])
+        payload["y_display"] = None if info["y"] is None else [fmt_decimal(value) for value in info["y"]]
+        payload["w_display"] = fmt_decimal(payload["w_float"])
         return ok_response(**payload)
 
     @app.route("/api/check", methods=["POST"])
