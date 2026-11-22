@@ -178,6 +178,15 @@ h3 { font-size: 1rem; }
 .graph-wrap { position: relative; }
 .graph-svg { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .graph-svg text { font-family: var(--font); font-size: 11px; fill: var(--muted); }
+.graph-svg .grid-line { stroke: var(--border); stroke-width: .7; }
+.graph-svg .axis { stroke: var(--muted); stroke-width: 1.3; }
+.graph-svg .feasible-region { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.graph-svg .constraint-line { stroke: var(--warning); stroke-width: 1.6; opacity: .85; }
+.graph-svg .constraint-line.equality { stroke-dasharray: 6 4; }
+.graph-svg .objective-line { stroke: var(--success); stroke-width: 2.4; stroke-dasharray: 8 5; }
+.graph-svg .objective-label { fill: var(--success); font-weight: 700; }
+.graph-svg .graph-vertex { fill: var(--surface); stroke: var(--accent); stroke-width: 2; }
+.graph-svg .graph-vertex.is-optimal { fill: var(--accent); stroke: #fff; stroke-width: 2.5; }
 .slider-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin-top: 12px; }
 input[type="range"] { width: 100%; accent-color: var(--accent); }
 

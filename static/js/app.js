@@ -582,3 +582,141 @@ function renderSimplex(result) {
   };
   draw();
 }
+
+function niceStep(range) {
+  const rough = range / 8;
+  const power = Math.pow(10, Math.floor(Math.log10(Math.max(rough, 1e-9))));
+  const scaled = rough / power;
+  const factor = scaled >= 5 ? 10 : scaled >= 2 ? 5 : scaled >= 1 ? 2 : 1;
+  return factor * power;
+}
+
+function graphBounds(graphical) {
+  const xs = [0];
+  const ys = [0];
+  graphical.lines.forEach((line) => {
+    if (line.x_intercept !== null) xs.push(line.x_intercept);
+    if (line.y_intercept !== null) ys.push(line.y_intercept);
+  });
+  graphical.polygon.forEach((point) => { xs.push(point.x); ys.push(point.y); });
+  let minX = Math.min(...xs);
+  let maxX = Math.max(...xs);
+  let minY = Math.min(...ys);
+  let maxY = Math.max(...ys);
+  if (maxX - minX < 6) { minX -= 3; maxX += 3; }
+  if (maxY - minY < 6) { minY -= 3; maxY += 3; }
+  const padX = (maxX - minX) * 0.12;
+  const padY = (maxY - minY) * 0.12;
+  return {
+    minX: minX - padX, maxX: maxX + padX,
+    minY: minY - padY, maxY: maxY + padY,
+  };
+}
+
+function lineEndpoints(a, b, rhs, bounds, project, width, height) {
+  const points = [];
+  const add = (x, y) => {
+    if (x >= bounds.minX - 1e-7 && x <= bounds.maxX + 1e-7
+      && y >= bounds.minY - 1e-7 && y <= bounds.maxY + 1e-7) {
+      const [px, py] = project(x, y);
+      if (px >= -1 && px <= width + 1 && py >= -1 && py <= height + 1) points.push([px, py]);
+    }
+  };
+  if (Math.abs(b) > 1e-9) {
+    add(bounds.minX, (rhs - a * bounds.minX) / b);
+    add(bounds.maxX, (rhs - a * bounds.maxX) / b);
+  }
+  if (Math.abs(a) > 1e-9) {
+    add((rhs - b * bounds.minY) / a, bounds.minY);
+    add((rhs - b * bounds.maxY) / a, bounds.maxY);
+  }
+  if (points.length < 2) return null;
+  return [points[0], points[points.length - 1]];
+}
+
+function renderGraph(result) {
+  const panel = $("#panel-graph");
+  const g = result && result.graphical;
+  if (!g) {
+    panel.innerHTML = '<div class="empty-state">The graph is available for models with exactly two variables.</div>';
+    return;
+  }
+  const W = 720;
+  const H = 480;
+  const margin = 56;
+  const bounds = graphBounds(g);
+  const project = (x, y) => [
+    margin + ((x - bounds.minX) / (bounds.maxX - bounds.minX)) * (W - 2 * margin),
+    H - margin - ((y - bounds.minY) / (bounds.maxY - bounds.minY)) * (H - 2 * margin),
+  ];
+  const [originX, originY] = project(0, 0);
+  const constraints = g.lines.map((line) => {
+    const ends = lineEndpoints(line.a, line.b, line.rhs, bounds, project, W, H);
+    if (!ends) return "";
+    return `<line class="constraint-line ${line.op === "=" ? "equality" : ""}" x1="${ends[0][0]}" y1="${ends[0][1]}" x2="${ends[1][0]}" y2="${ends[1][1]}"><title>${escapeHtml(line.label)}</title></line>`;
+  }).join("");
+  const polygon = g.polygon.map((point) => project(point.x, point.y).join(",")).join(" ");
+  const vertices = g.polygon.map((point) => {
+    const [cx, cy] = project(point.x, point.y);
+    return `<circle class="graph-vertex ${point.optimal ? "is-optimal" : ""}" cx="${cx}" cy="${cy}" r="${point.optimal ? 6 : 3.5}"><title>${escapeHtml(point.tooltip)}</title></circle>`;
+  }).join("");
+  const stepX = niceStep(bounds.maxX - bounds.minX);
+  const stepY = niceStep(bounds.maxY - bounds.minY);
+  const grid = [];
+  for (let x = Math.ceil(bounds.minX / stepX) * stepX; x <= bounds.maxX; x += stepX) {
+    const [px] = project(x, 0);
+    grid.push(`<line class="grid-line" x1="${px}" y1="${margin}" x2="${px}" y2="${H - margin}"/><text x="${px}" y="${H - margin + 18}" text-anchor="middle">${Number(x.toFixed(2))}</text>`);
+  }
+  for (let y = Math.ceil(bounds.minY / stepY) * stepY; y <= bounds.maxY; y += stepY) {
+    const [, py] = project(0, y);
+    grid.push(`<line class="grid-line" x1="${margin}" y1="${py}" x2="${W - margin}" y2="${py}"/><text x="${margin - 10}" y="${py + 4}" text-anchor="end">${Number(y.toFixed(2))}</text>`);
+  }
+  const c = g.objective.c.map(Number);
+  const corners = [[bounds.minX, bounds.minY], [bounds.minX, bounds.maxY], [bounds.maxX, bounds.minY], [bounds.maxX, bounds.maxY]];
+  const objectives = corners.map((point) => c[0] * point[0] + c[1] * point[1])
+    .concat(g.polygon.map((point) => point.z));
+  let kMin = Math.min(...objectives);
+  let kMax = Math.max(...objectives);
+  if (kMax - kMin < 1e-9) { kMin -= 1; kMax += 1; }
+  const startK = g.z === null ? (kMin + kMax) / 2 : Number(g.z);
+  panel.innerHTML = `
+    <div class="graph-wrap">
+      <svg class="graph-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Graphical solution">
+        ${grid.join("")}
+        <line class="axis" x1="${margin}" y1="${originY}" x2="${W - margin + 8}" y2="${originY}"/>
+        <line class="axis" x1="${originX}" y1="${H - margin}" x2="${originX}" y2="${margin - 8}"/>
+        <text x="${W - margin + 12}" y="${originY + 4}">x₁</text>
+        <text x="${originX + 8}" y="${margin - 12}">x₂</text>
+        ${polygon ? `<polygon class="feasible-region" points="${polygon}"/>` : ""}
+        ${constraints}
+        <line id="objective-line" class="objective-line" x1="0" y1="0" x2="0" y2="0"/>
+        <text id="objective-label" class="objective-label" x="${W - margin}" y="${margin - 18}" text-anchor="end"></text>
+        ${vertices}
+      </svg>
+    </div>
+    <div class="slider-row">
+      <label for="objective-slider">Objective z</label>
+      <input id="objective-slider" type="range" min="${kMin}" max="${kMax}" step="${(kMax - kMin) / 200}" value="${startK}">
+      <span id="objective-value" class="range-value">z = ${Number(startK).toFixed(2)}</span>
+    </div>
+    <p class="muted">${g.region_bounded ? "The feasible region is bounded; the optimum is at a vertex." : "The feasible region is unbounded; the arrow of improving z never stops."}</p>
+  `;
+  const objectiveLine = $("#objective-line");
+  const objectiveLabel = $("#objective-label");
+  const objectiveValue = $("#objective-value");
+  const updateObjective = (k) => {
+    const ends = lineEndpoints(c[0], c[1], k, bounds, project, W, H);
+    if (!ends) return;
+    objectiveLine.setAttribute("x1", ends[0][0]);
+    objectiveLine.setAttribute("y1", ends[0][1]);
+    objectiveLine.setAttribute("x2", ends[1][0]);
+    objectiveLine.setAttribute("y2", ends[1][1]);
+    objectiveLabel.textContent = `z = ${Number(k).toFixed(2)}`;
+    objectiveValue.textContent = `z = ${Number(k).toFixed(2)}`;
+  };
+  updateObjective(startK);
+  $("#objective-slider").addEventListener("input", (event) => {
+    state.graphK = Number(event.target.value);
+    updateObjective(state.graphK);
+  });
+}
