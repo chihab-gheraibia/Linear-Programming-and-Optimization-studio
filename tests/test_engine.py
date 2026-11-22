@@ -286,7 +286,7 @@ def test_e_complementary_not_optimal():
     result = check_optimality(parse_lp(item["text"]), item["proposed"])
     assert result.verdict == "not optimal"
     assert result.y == [F(1), F(1), F(0), F(1)]
-    assert any("Dual constraint 5" in step and ">= 3" in step for step in result.steps)
+    assert any("Dual constraint 5" in step and "≥ 3" in step for step in result.steps)
 
 
 def test_e_complementary_optimal():
@@ -319,6 +319,31 @@ def test_e_infeasible_proposed_point():
     result = check_optimality(lp, ["100", "100"])
     assert result.verdict == "not optimal"
     assert result.primal_feasible is False
+
+
+def test_e_underdetermined_td1_search():
+    """E: an under-determined y system is searched, not left undecided."""
+    lp = parse_lp(EXAMPLES["td1_p1_ex1"]["text"])
+    good = check_optimality(lp, ["5", "0"])
+    assert good.verdict == "optimal", good.steps
+    assert good.y == [F(400), F(0)]
+    assert any("free" in step and "y =" in step for step in good.steps)
+    assert any("simplex searched" in step for step in good.steps)
+    assert not any("gives:" in step and "y" not in step for step in good.steps)
+    bad = check_optimality(lp, ["0", "5/2"])
+    assert bad.verdict == "not optimal", bad.steps
+    assert bad.dual_feasible is False
+    assert "no dual vector derived" not in " ".join(bad.steps) or bad.y is not None
+
+
+def test_e_min_and_max_furniture_checks():
+    """E: complementary slackness confirms both senses of the furniture LP."""
+    maximum = parse_lp(EXAMPLES["furniture"]["text"])
+    assert check_optimality(maximum, [10, 2]).verdict == "optimal"
+    minimum = parse_lp(EXAMPLES["furniture"]["text"].replace("Max", "Min", 1))
+    result = check_optimality(minimum, [0, 0])
+    assert result.verdict == "optimal", result.steps
+    assert result.y == [F(0), F(0), F(0)]
 
 
 def check_interval(payload, lower, upper, z_low=None, z_high=None):
