@@ -6,19 +6,21 @@ Ex4 claims 148, which is the maximum; the requested minimum is 100.
 The values below are the correct ones.
 """
 
+import subprocess
 import sys
 from fractions import Fraction
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app import create_app, fmt_decimal
 from solver.complementary import check_optimality
 from solver.dual import dual_solution, dualize, shadow_prices
 from solver.examples import EXAMPLES, get_example
 from solver.graphical import solve_graphical
 from solver.sensitivity import cost_interval, rhs_interval, what_if
 from solver.model import F, fmt
-from solver.parser import ParseError, parse_lp
+from solver.parser import ParseError, operator_hints, parse_lp
 from solver.simplex import MNum, solve
 
 
@@ -285,7 +287,7 @@ def test_e_complementary_not_optimal():
     result = check_optimality(parse_lp(item["text"]), item["proposed"])
     assert result.verdict == "not optimal"
     assert result.y == [F(1), F(1), F(0), F(1)]
-    assert any("Dual constraint 5" in step and ">= 3" in step for step in result.steps)
+    assert any("Dual constraint 5" in step and "≥ 3" in step for step in result.steps)
 
 
 def test_e_complementary_optimal():
@@ -318,6 +320,31 @@ def test_e_infeasible_proposed_point():
     result = check_optimality(lp, ["100", "100"])
     assert result.verdict == "not optimal"
     assert result.primal_feasible is False
+
+
+def test_e_underdetermined_td1_search():
+    """E: an under-determined y system is searched, not left undecided."""
+    lp = parse_lp(EXAMPLES["td1_p1_ex1"]["text"])
+    good = check_optimality(lp, ["5", "0"])
+    assert good.verdict == "optimal", good.steps
+    assert good.y == [F(400), F(0)]
+    assert any("free" in step and "y =" in step for step in good.steps)
+    assert any("simplex searched" in step for step in good.steps)
+    assert not any("gives:" in step and "y" not in step for step in good.steps)
+    bad = check_optimality(lp, ["0", "5/2"])
+    assert bad.verdict == "not optimal", bad.steps
+    assert bad.dual_feasible is False
+    assert "no dual vector derived" not in " ".join(bad.steps) or bad.y is not None
+
+
+def test_e_min_and_max_furniture_checks():
+    """E: complementary slackness confirms both senses of the furniture LP."""
+    maximum = parse_lp(EXAMPLES["furniture"]["text"])
+    assert check_optimality(maximum, [10, 2]).verdict == "optimal"
+    minimum = parse_lp(EXAMPLES["furniture"]["text"].replace("Max", "Min", 1))
+    result = check_optimality(minimum, [0, 0])
+    assert result.verdict == "optimal", result.steps
+    assert result.y == [F(0), F(0), F(0)]
 
 
 def check_interval(payload, lower, upper, z_low=None, z_high=None):
@@ -377,6 +404,67 @@ def test_f_what_if():
     assert different["basis_changed"] is True
     assert "Basis changed" in different["message"]
     assert F(different["z"]) != F(3900)
+
+
+def test_g_degenerate_dual_consistency():
+    """G: degenerate duals expose both extreme y values with one canonical y."""
+    lp = parse_lp(EXAMPLES["td1_p1_ex1"]["text"])
+    primal = solve(lp)
+    info = dual_solution(lp, primal)
+    assert primal.degenerate is True
+    assert info["y"] == [F(0), Fraction(1000, 3)]
+    assert info["tableau_y"] == [F(400), F(0)]
+    assert info["shadow_prices"] == info["y"]
+    assert info["alternative_ys"] == [[F(400), F(0)], [F(0), Fraction(1000, 3)]]
+    assert "y1 ≥ 0, y2 ≥ 0" in info["dual"].to_text()
+
+    payload = create_app().test_client().post(
+        "/api/dual", json={"text": EXAMPLES["td1_p1_ex1"]["text"]}
+    ).get_json()
+    assert payload["degenerate"] is True
+    assert payload["shadow_prices"] == payload["y"]
+    assert payload["alternative_ys"] == [["400", "0"], ["0", "1000/3"]]
+    assert "≥ 4000" in payload["dual"]["text"]
+    assert all(">=0" not in rule for rule in payload["rules"])
+
+
+def test_g_examples_api_contract():
+    """G: the examples endpoint is a list of complete example cards."""
+    payload = create_app().test_client().get("/api/examples").get_json()
+    assert payload["ok"] is True
+    assert isinstance(payload["examples"], list)
+    assert payload["examples"]
+    for item in payload["examples"]:
+        assert {"id", "title", "description", "text"} <= set(item), item
+        assert isinstance(item["id"], str) and item["id"]
+        assert isinstance(item["title"], str) and item["title"]
+        assert isinstance(item["description"], str)
+        assert isinstance(item["text"], str) and "z =" in item["text"]
+
+
+def test_g_parser_hints_and_decimals():
+    """G: loose operators are explained and decimals are short in the API."""
+    hints = operator_hints("Max z = x\nx1 < 3\nx2 > 4\nx3 <= 5\nx4 >= 6")
+    assert hints == ["'<' is treated as '<='", "'>' is treated as '>='"]
+    assert operator_hints("Max z = x\nx1 ≤ 3\nx2 ≥ 4") == []
+    client = create_app().test_client()
+    parsed = client.post("/api/parse", json={"text": "Max z = x\nx1 < 3"}).get_json()
+    assert parsed["hints"] == ["'<' is treated as '<='"]
+    solved = client.post("/api/solve", json={"text": "Max z = x1\nx1 <= 1000/3"}).get_json()
+    assert solved["z_display"] == "333.333333"
+    assert solved["x_display"] == ["333.333333"]
+    assert fmt_decimal(5) == "5"
+    assert fmt_decimal(None) is None
+
+
+def test_g_editor_placeholder_and_frontend_helpers():
+    """G: the editor is clearly an example and JS helpers behave as expected."""
+    html = (Path(__file__).resolve().parents[1] / "templates" / "index.html").read_text(encoding="utf-8")
+    assert "Example (click 'Load example')" in html
+    script = Path(__file__).resolve().with_name("test_frontend.js")
+    completed = subprocess.run(["node", str(script)], capture_output=True, text=True)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "frontend helper tests passed" in completed.stdout
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ const state = {
   sensitivity: null,
   compare: null,
   mode: "text",
+  hints: [],
   theme: "light",
   parseToken: 0,
 };
@@ -25,6 +26,14 @@ function escapeHtml(value) {
 function pretty(value) {
   const text = String(value);
   return text.replace(/(\d+)$/, "<sub>$1</sub>");
+}
+
+function hintHtml(hints) {
+  return (hints || []).map((hint) => `<div class="lp-line hint-line">${escapeHtml(hint)}</div>`).join("");
+}
+
+function objectiveLabel(sense) {
+  return sense === "min" ? "minimum of z" : "maximum of z";
 }
 
 async function api(path, body) {
@@ -50,6 +59,22 @@ function toast(message, kind = "") {
   node.textContent = message;
   $("#toasts").appendChild(node);
   setTimeout(() => node.remove(), 4200);
+}
+
+function requireResult() {
+  if (!state.result) {
+    toast("Solve a model first", "error");
+    return false;
+  }
+  return true;
+}
+
+function formatDecimal(value, digits = 6) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return String(value ?? "—");
+  const text = number.toFixed(digits);
+  const trimmed = text.includes(".") ? text.replace(/0+$/, "").replace(/\.$/, "") : text;
+  return trimmed === "-0" ? "0" : trimmed;
 }
 
 function setTheme(theme) {
@@ -137,6 +162,7 @@ function renderUnderstood() {
     <div class="lp-line"><strong>${escapeHtml(objective)}</strong></div>
     ${rows}
     <div class="lp-line muted">${model.var_names.map((name) => pretty(name)).join(", ")} ≥ 0</div>
+    ${hintHtml(state.hints)}
   `;
   $("#parse-status").textContent = `${model.var_names.length} variable${model.var_names.length === 1 ? "" : "s"} · ${model.constraints.length} constraint${model.constraints.length === 1 ? "" : "s"}`;
   $("#parse-status").className = "pill";
@@ -147,6 +173,7 @@ async function parseModel(showErrors = false) {
   const text = $("#lp-text").value.trim();
   if (!text) {
     state.model = null;
+    state.hints = [];
     $("#understood").className = "understood empty-state";
     $("#understood").textContent = "Start typing a model. The parsed problem appears here instantly.";
     $("#parse-status").textContent = "Waiting for input";
@@ -158,6 +185,7 @@ async function parseModel(showErrors = false) {
     const data = await api("/api/parse", { text });
     if (token !== state.parseToken) return false;
     state.model = data.model;
+    state.hints = data.hints || [];
     $("#understood").className = "understood";
     renderUnderstood();
     if (state.mode === "form") renderForm(data.model);
@@ -241,10 +269,38 @@ function setMode(mode) {
   }
 }
 
+function normaliseExamples(payload) {
+  let source = payload;
+  if (payload && !Array.isArray(payload)) {
+    source = payload.examples || payload.items;
+  }
+  if (!Array.isArray(source) && source && typeof source === "object") {
+    source = Object.entries(source).map(([id, item]) => ({ id, key: id, ...item }));
+  }
+  if (!Array.isArray(source)) return [];
+  return source.map((item, index) => ({
+    id: item.id || item.key || String(index),
+    title: item.title || item.name || `Example ${index + 1}`,
+    description: item.description || "",
+    text: item.text || "",
+    ...(item.var_signs ? { var_signs: item.var_signs } : {}),
+    ...(item.proposed ? { proposed: item.proposed } : {}),
+  }));
+}
+
+function applyExample(example) {
+  state.currentExample = example.id;
+  state.varSigns = example.var_signs || null;
+  state.proposed = example.proposed || null;
+  $("#lp-text").value = example.text || "";
+  $("#problem-notes").value = example.description || "";
+  updateLineNumbers();
+}
+
 async function loadExamples() {
   try {
     const data = await api("/api/examples");
-    state.examples = data.items;
+    state.examples = normaliseExamples(data);
     renderExamples();
   } catch (error) {
     $("#examples-grid").innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
@@ -253,34 +309,22 @@ async function loadExamples() {
 
 function renderExamples() {
   $("#examples-grid").innerHTML = state.examples.map((example) => `
-    <button class="example-card" data-example="${escapeHtml(example.key)}" type="button">
-      <strong>${escapeHtml(example.name)}</strong>
+    <button class="example-card" data-example="${escapeHtml(example.id)}" type="button">
+      <strong>${escapeHtml(example.title)}</strong>
       <span>${escapeHtml(example.description)}</span>
     </button>
   `).join("");
   $$("[data-example]").forEach((button) => button.addEventListener("click", () => loadExample(button.dataset.example)));
 }
 
-async function loadExample(key) {
-  const example = state.examples.find((item) => item.key === key);
+async function loadExample(id) {
+  const example = state.examples.find((item) => item.id === id);
   if (!example) return;
-  try {
-    const response = await fetch("/api/examples");
-    const data = await response.json();
-    const full = data.items[key];
-    state.currentExample = key;
-    state.varSigns = full.var_signs || null;
-    state.proposed = full.proposed || null;
-    $("#lp-text").value = full.text;
-    $("#problem-notes").value = full.description || "";
-    updateLineNumbers();
-    await parseModel(true);
-    goToStep(2);
-    toast(`Loaded ${example.name}.`, "success");
-    saveSession();
-  } catch (error) {
-    toast(error.message, "error");
-  }
+  applyExample(example);
+  await parseModel(true);
+  goToStep(2);
+  toast(`Loaded ${example.title}.`, "success");
+  saveSession();
 }
 
 function saveSession() {
@@ -329,6 +373,7 @@ async function solveModel() {
     try {
       const data = await api("/api/parse", formToPayload());
       state.model = data.model;
+      state.hints = [];
       renderUnderstood();
       modelReady = true;
     } catch (error) {
@@ -346,6 +391,7 @@ async function solveModel() {
   try {
     const result = await api("/api/solve", payload);
     state.result = result;
+    state.hints = result.hints || [];
     const dualRequest = api("/api/dual", payload).catch(() => null);
     const sensitivityRequest = api("/api/sensitivity", payload).catch(() => null);
     const [dual, sensitivity] = await Promise.all([dualRequest, sensitivityRequest]);
@@ -379,6 +425,7 @@ function clearAll() {
   $("#lp-text").value = "";
   $("#problem-notes").value = "";
   state.model = null;
+  state.hints = [];
   state.result = null;
   state.dual = null;
   state.sensitivity = null;
@@ -471,7 +518,7 @@ function renderSolution(result) {
   if (!result) return;
   const names = state.model ? state.model.var_names : (result.x || []).map((_, index) => `x${index + 1}`);
   const variables = result.x ? result.x.map((value, index) => `
-    <tr><td>${pretty(names[index] || `x${index + 1}`)}</td><td>${escapeHtml(value)}</td><td>${Number(result.x_float[index]).toFixed(6)}</td></tr>
+    <tr><td>${pretty(names[index] || `x${index + 1}`)}</td><td>${escapeHtml(value)}</td><td>${formatDecimal(result.x_float[index])}</td></tr>
   `).join("") : "";
   const flags = [
     result.degenerate ? '<span class="pill warn">Degenerate</span>' : "",
@@ -485,7 +532,7 @@ function renderSolution(result) {
       <span class="muted">${result.iterations} iteration${result.iterations === 1 ? "" : "s"}</span>
     </div>
     ${result.z === null ? `<div class="empty-state">${escapeHtml((result.notes || []).join(" ") || "No objective value for this status.")}</div>` : `
-      <div class="z-hero"><span class="value">${escapeHtml(result.z)}</span><span class="label">= maximum / minimum of z (exact)</span></div>
+      <div class="z-hero"><span class="value">${escapeHtml(result.z)}</span><span class="label">= ${objectiveLabel(state.model ? state.model.sense : "max")} (exact)</span></div>
       <table class="data-table"><thead><tr><th>Variable</th><th>Exact value</th><th>Decimal</th></tr></thead><tbody>${variables}</tbody></table>
     `}
     <div class="flag-row">${flags}</div>
@@ -697,7 +744,7 @@ function renderGraph(result) {
     <div class="slider-row">
       <label for="objective-slider">Objective z</label>
       <input id="objective-slider" type="range" min="${kMin}" max="${kMax}" step="${(kMax - kMin) / 200}" value="${startK}">
-      <span id="objective-value" class="range-value">z = ${Number(startK).toFixed(2)}</span>
+      <span id="objective-value" class="range-value">z = ${formatDecimal(startK)}</span>
     </div>
     <p class="muted">${g.region_bounded ? "The feasible region is bounded; the optimum is at a vertex." : "The feasible region is unbounded; the arrow of improving z never stops."}</p>
   `;
@@ -711,14 +758,25 @@ function renderGraph(result) {
     objectiveLine.setAttribute("y1", ends[0][1]);
     objectiveLine.setAttribute("x2", ends[1][0]);
     objectiveLine.setAttribute("y2", ends[1][1]);
-    objectiveLabel.textContent = `z = ${Number(k).toFixed(2)}`;
-    objectiveValue.textContent = `z = ${Number(k).toFixed(2)}`;
+    objectiveLabel.textContent = `z = ${formatDecimal(k)}`;
+    objectiveValue.textContent = `z = ${formatDecimal(k)}`;
   };
   updateObjective(startK);
   $("#objective-slider").addEventListener("input", (event) => {
     state.graphK = Number(event.target.value);
     updateObjective(state.graphK);
   });
+}
+
+function verdictPillClass(check) {
+  if (check.verdict === "optimal") return "pill";
+  if (check.verdict === "undetermined") return "pill warn";
+  return "pill bad";
+}
+
+function dualStateText(check) {
+  if (!check.y || check.y.length === 0) return "no dual vector derived";
+  return check.dual_feasible ? "dual feasible" : "dual not feasible";
 }
 
 function renderCheckResult(check) {
@@ -728,17 +786,24 @@ function renderCheckResult(check) {
     box.innerHTML = '<div class="empty-state">Enter a point and press Check.</div>';
     return;
   }
-  const verdictClass = check.verdict === "optimal" ? "pill" : "pill bad";
+  const verdictClass = verdictPillClass(check);
   const y = check.y ? check.y.map((value, index) => `<tr><td>y${index + 1}</td><td>${escapeHtml(value)}</td></tr>`).join("") : "";
   const steps = (check.steps || []).map((step) => `<li>${escapeHtml(typeof step === "string" ? step : JSON.stringify(step))}</li>`).join("");
   box.innerHTML = `
     <div class="card-head row">
       <span class="${verdictClass}">${escapeHtml(check.verdict)}</span>
-      <span class="muted">primal ${check.primal_feasible ? "feasible" : "not feasible"} · dual ${check.dual_feasible ? "feasible" : "not feasible"}</span>
+      <span class="muted">primal ${check.primal_feasible ? "feasible" : "not feasible"} · ${dualStateText(check)}</span>
     </div>
     ${y ? `<table class="data-table"><thead><tr><th>Dual variable</th><th>Exact value</th></tr></thead><tbody>${y}</tbody></table>` : ""}
     ${steps ? `<ul class="rule-list">${steps}</ul>` : ""}
   `;
+}
+
+function degenerateDualNote(dual) {
+  if (!dual || !dual.degenerate || !dual.alternative_ys || dual.alternative_ys.length < 2) return "";
+  const examples = dual.alternative_ys.slice(0, 2)
+    .map((vector) => `(${vector.join(", ")})`).join(" and ");
+  return `Degenerate primal: the dual has several optimal solutions, e.g. ${examples}; shadow prices are not unique.`;
 }
 
 function renderDual(dual) {
@@ -750,13 +815,15 @@ function renderDual(dual) {
   const primalText = state.model
     ? `${state.model.sense === "max" ? "Max" : "Min"} z = ${state.model.c.map((value, index) => `${value}${state.model.var_names[index]}`).join(" + ")}\n${state.model.constraints.map((row) => row.text).join("\n")}`
     : "";
-  const y = dual.y ? dual.y.map((value, index) => `<tr><td>${pretty(dual.dual.var_names[index])}</td><td>${escapeHtml(value)}</td><td>${Number(dual.y_float[index]).toFixed(6)}</td></tr>`).join("") : "";
+  const y = dual.y ? dual.y.map((value, index) => `<tr><td>${pretty(dual.dual.var_names[index])}</td><td>${escapeHtml(value)}</td><td>${formatDecimal(dual.y_float[index])}</td></tr>`).join("") : "";
   const shadows = dual.shadow_prices.map((price, index) => {
     const label = state.model && state.model.constraints[index]
       ? state.model.constraints[index].text : `Constraint ${index + 1}`;
     return `<div class="shadow-card"><span class="muted">${escapeHtml(label)}</span><br><strong>${price === null ? "—" : escapeHtml(price)}</strong></div>`;
   }).join("");
   const rules = (dual.rules || []).map((rule) => `<li>${escapeHtml(rule)}</li>`).join("");
+  const note = degenerateDualNote(dual);
+  const degenerateNote = note ? `<div class="inline-hint">${escapeHtml(note)}</div>` : "";
   const proposed = state.proposed || (state.result && state.result.x) || [];
   panel.innerHTML = `
     <div class="dual-grid">
@@ -766,8 +833,9 @@ function renderDual(dual) {
     </div>
     <h3 style="margin-top:20px">Solution of the dual</h3>
     ${y ? `<table class="data-table"><thead><tr><th>Variable</th><th>Exact</th><th>Decimal</th></tr></thead><tbody>${y}</tbody></table>` : '<div class="empty-state">The dual has no optimal solution.</div>'}
+    ${degenerateNote}
     <div class="z-hero"><span class="value">${dual.w === null ? "—" : escapeHtml(dual.w)}</span><span class="label">w = ${dual.strong_duality ? "equals z (strong duality)" : "dual objective"}</span></div>
-    <h3>Shadow prices</h3>
+    <h3>Shadow prices (same y as the table)</h3>
     <div class="shadow-grid">${shadows || '<div class="empty-state">Not available.</div>'}</div>
     <ul class="rule-list">${rules}</ul>
     <h3 style="margin-top:20px">Complementary slackness</h3>
@@ -936,7 +1004,7 @@ function renderCompare(data) {
     return;
   }
   box.innerHTML = `
-    <div class="card-head row"><span class="match-badge">${data.match ? "Results match" : "Results differ"}</span><span class="muted">${Number(data.docplex.time_ms).toFixed(1)} ms</span></div>
+    <div class="card-head row"><span class="match-badge">${data.match ? "Results match" : "Results differ"}</span><span class="muted">${formatDecimal(data.docplex.time_ms, 3)} ms</span></div>
     <table class="data-table"><thead><tr><th>Solver</th><th>Status</th><th>z</th><th>Iterations</th></tr></thead><tbody>
       <tr><td>Our engine (Fraction + Big-M)</td><td>optimal</td><td>${escapeHtml(data.ours.z)}</td><td>${data.ours.iterations}</td></tr>
       <tr><td>docplex / CPLEX</td><td>${escapeHtml(data.docplex.status)}</td><td>${escapeHtml(data.docplex.z ?? "—")}</td><td>${data.docplex.iterations ?? "—"}</td></tr>
@@ -990,6 +1058,7 @@ function reportHtml() {
 function bindOutputEvents() {
   $("#verify-button").addEventListener("click", compareSolvers);
   $("#copy-button").addEventListener("click", async () => {
+    if (!requireResult()) return;
     try {
       await navigator.clipboard.writeText(summaryText());
       toast("Solution copied.", "success");
@@ -998,6 +1067,7 @@ function bindOutputEvents() {
     }
   });
   $("#download-button").addEventListener("click", () => {
+    if (!requireResult()) return;
     const blob = new Blob([JSON.stringify({
       model: state.model, result: state.result, dual: state.dual,
       sensitivity: state.sensitivity, compare: state.compare,
@@ -1009,6 +1079,7 @@ function bindOutputEvents() {
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   });
   $("#export-button").addEventListener("click", () => {
+    if (!requireResult()) return;
     $("#print-report").innerHTML = reportHtml();
     window.print();
   });

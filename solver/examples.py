@@ -189,11 +189,20 @@ x1 + x2 <= 40
 
 
 def list_examples():
-    """Return the short list used by the example cards in the interface."""
-    return [
-        {"key": key, "name": item["name"], "description": item["description"]}
-        for key, item in EXAMPLES.items()
-    ]
+    """Return full example cards with stable ids for the interface."""
+    items = []
+    for key, item in EXAMPLES.items():
+        card = {
+            "id": key,
+            "title": item["name"],
+            "description": item["description"],
+            "text": item["text"],
+        }
+        for extra in ("var_signs", "proposed"):
+            if extra in item:
+                card[extra] = item[extra]
+        items.append(card)
+    return items
 
 
 def get_example(key):
