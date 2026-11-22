@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+build/
+dist/
+
+# Virtual environments and local settings
+.venv/
+venv/
+env/
+.env
+
+# Test caches
+.pytest_cache/
+
+# Course documents (never commit slides or statements)
+*.pdf
+*.docx
+
+# Logs and OS files
+*.log
+.DS_Store
