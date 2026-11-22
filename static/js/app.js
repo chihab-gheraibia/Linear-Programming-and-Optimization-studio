@@ -458,3 +458,127 @@ document.addEventListener("DOMContentLoaded", () => {
   goToStep(savedStep >= 1 && savedStep <= 4 ? savedStep : 1);
   restoreSession();
 });
+
+function statusLabel(status) {
+  return {
+    optimal: "Optimal",
+    infeasible: "Infeasible",
+    unbounded: "Unbounded",
+  }[status] || status;
+}
+
+function renderSolution(result) {
+  if (!result) return;
+  const names = state.model ? state.model.var_names : (result.x || []).map((_, index) => `x${index + 1}`);
+  const variables = result.x ? result.x.map((value, index) => `
+    <tr><td>${pretty(names[index] || `x${index + 1}`)}</td><td>${escapeHtml(value)}</td><td>${Number(result.x_float[index]).toFixed(6)}</td></tr>
+  `).join("") : "";
+  const flags = [
+    result.degenerate ? '<span class="pill warn">Degenerate</span>' : "",
+    result.multiple_optima ? '<span class="pill warn">Alternative optima</span>' : "",
+    result.status === "optimal" ? '<span class="pill">Exact arithmetic</span>' : "",
+  ].join("");
+  const notes = (result.notes || []).map((note) => `<li>${escapeHtml(note)}</li>`).join("");
+  $("#panel-solution").innerHTML = `
+    <div class="card-head row">
+      <span class="status-badge status-${escapeHtml(result.status)}">${escapeHtml(statusLabel(result.status))}</span>
+      <span class="muted">${result.iterations} iteration${result.iterations === 1 ? "" : "s"}</span>
+    </div>
+    ${result.z === null ? `<div class="empty-state">${escapeHtml((result.notes || []).join(" ") || "No objective value for this status.")}</div>` : `
+      <div class="z-hero"><span class="value">${escapeHtml(result.z)}</span><span class="label">= maximum / minimum of z (exact)</span></div>
+      <table class="data-table"><thead><tr><th>Variable</th><th>Exact value</th><th>Decimal</th></tr></thead><tbody>${variables}</tbody></table>
+    `}
+    <div class="flag-row">${flags}</div>
+    ${notes ? `<ul class="rule-list">${notes}</ul>` : ""}
+  `;
+}
+
+function renderTableau(step) {
+  const head = step.col_names.map((name, index) => `
+    <th class="${name === step.pivot?.col ? "entering-col" : ""}">${pretty(name)}<br><span class="muted">${escapeHtml(step.cj[index])}</span></th>
+  `).join("");
+  const rows = step.rows.map((row, index) => `
+    <tr class="${step.leaving && step.basis[index] === step.leaving ? "leaving-row" : ""}">
+      <td>${pretty(step.basis[index])}</td><td>${escapeHtml(step.cb[index])}</td>
+      ${row.map((value, column) => {
+        const isPivot = step.pivot && step.pivot.row === index + 1 && step.pivot.col === step.col_names[column];
+        const isEntering = step.pivot && step.pivot.col === step.col_names[column];
+        return `<td class="${isPivot ? "pivot-cell" : isEntering ? "entering-col" : ""}">${escapeHtml(value)}</td>`;
+      }).join("")}
+      <td>${escapeHtml(step.b[index])}</td><td class="muted">${escapeHtml(step.ratio_by_row[index])}</td>
+    </tr>
+  `).join("");
+  const markerRow = (label, values) => `<tr><td><strong>${label}</strong></td><td></td>${values.map((value) => `<td>${escapeHtml(value)}</td>`).join("")}<td></td><td></td></tr>`;
+  return `
+    <div class="tableau-scroll"><table class="tableau">
+      <thead><tr><th>Basis</th><th>Cb</th>${head}<th>b</th><th>Ratio</th></tr></thead>
+      <tbody>${rows}${markerRow("Zj", step.zj)}${markerRow("Δj", step.delta)}</tbody>
+    </table></div>
+  `;
+}
+
+function renderSimplex(result) {
+  clearInterval(state.playerTimer);
+  state.playerTimer = null;
+  const steps = (result && result.steps) || [];
+  if (!steps.length) {
+    $("#panel-simplex").innerHTML = '<div class="empty-state">No simplex tableau is available for this status.</div>';
+    return;
+  }
+  let index = 0;
+  const panel = $("#panel-simplex");
+  const draw = () => {
+    const step = steps[index];
+    panel.innerHTML = `
+      <div class="player-controls">
+        <button class="button button-ghost" data-player="first" type="button">⏮</button>
+        <button class="button button-ghost" data-player="prev" type="button">◀</button>
+        <button class="button button-primary" data-player="play" type="button">▶ Play</button>
+        <button class="button button-ghost" data-player="next" type="button">▶</button>
+        <button class="button button-ghost" data-player="last" type="button">⏭</button>
+        <strong>Iteration ${step.iteration} / ${steps.length - 1}</strong>
+        <span class="muted">z = ${escapeHtml(step.z)}</span>
+      </div>
+      <input type="range" min="0" max="${steps.length - 1}" value="${index}" data-player-range aria-label="Simplex iteration">
+      <div class="progress"><span style="width:${(index / Math.max(steps.length - 1, 1)) * 100}%"></span></div>
+      ${renderTableau(step)}
+      <div class="player-message">${escapeHtml(step.message)}</div>
+      ${step.ratios.length ? `<p class="muted">Ratios: ${step.ratios.map((ratio) => `row ${escapeHtml(ratio.row)} → ${escapeHtml(ratio.value)}`).join(" · ")}</p>` : ""}
+    `;
+    $$("[data-player]", panel).forEach((button) => button.addEventListener("click", () => {
+      const action = button.dataset.player;
+      if (action === "play") {
+        if (state.playerTimer) {
+          clearInterval(state.playerTimer);
+          state.playerTimer = null;
+          draw();
+          return;
+        }
+        $('[data-player="play"]', panel).textContent = "❚❚ Pause";
+        state.playerTimer = setInterval(() => {
+          if (index >= steps.length - 1) {
+            clearInterval(state.playerTimer);
+            state.playerTimer = null;
+            draw();
+          } else {
+            index += 1;
+            draw();
+          }
+        }, 900);
+        return;
+      }
+      if (action === "first") index = 0;
+      if (action === "prev") index = Math.max(0, index - 1);
+      if (action === "next") index = Math.min(steps.length - 1, index + 1);
+      if (action === "last") index = steps.length - 1;
+      draw();
+    }));
+    $("[data-player-range]", panel).addEventListener("input", (event) => {
+      clearInterval(state.playerTimer);
+      state.playerTimer = null;
+      index = Number(event.target.value);
+      draw();
+    });
+  };
+  draw();
+}
