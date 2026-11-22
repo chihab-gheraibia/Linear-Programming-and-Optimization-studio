@@ -9,11 +9,15 @@ from fractions import Fraction
 from flask import Flask, jsonify, render_template, request
 from werkzeug.exceptions import HTTPException
 
+from solver.complementary import check_optimality
+from solver.dual import dual_solution, dual_solution_to_dict
 from solver.examples import EXAMPLES, list_examples
 from solver.graphical import graphical_to_dict, solve_graphical
-from solver.model import LP
+from solver.model import LP, fmt
 from solver.parser import parse_lp
+from solver.sensitivity import sensitivity_report, what_if
 from solver.simplex import solve
+from solver.verify_docplex import solve_with_docplex
 
 
 def jsonable(value):
@@ -100,6 +104,68 @@ def create_app():
         if lp.n == 2:
             payload["graphical"] = graphical_to_dict(solve_graphical(lp), lp)
         return ok_response(**payload)
+
+    @app.route("/api/dual", methods=["POST"])
+    def api_dual():
+        """Return the dual, its solution, the rules and the shadow prices."""
+        data = request_data()
+        lp = load_model(data)
+        primal = solve(lp)
+        info = dual_solution(lp, primal, data.get("var_signs"))
+        payload = dual_solution_to_dict(info)
+        payload["strong_duality"] = (
+            primal.status == "optimal" and info["w"] is not None and info["w"] == primal.z
+        )
+        payload["z_primal"] = None if primal.z is None else fmt(primal.z)
+        payload["z_float"] = None if primal.z is None else float(primal.z)
+        return ok_response(**payload)
+
+    @app.route("/api/check", methods=["POST"])
+    def api_check():
+        """Run complementary slackness on a proposed solution."""
+        data = request_data()
+        lp = load_model(data)
+        proposed = data.get("x") or data.get("proposed")
+        if not isinstance(proposed, list):
+            raise ValueError("Send 'x' as a list of values, one per decision variable.")
+        return ok_response(**check_optimality(lp, proposed).to_dict())
+
+    @app.route("/api/sensitivity", methods=["POST"])
+    def api_sensitivity():
+        """Return all optimality and validity ranges."""
+        lp = load_model(request_data())
+        return ok_response(**sensitivity_report(lp))
+
+    @app.route("/api/whatif", methods=["POST"])
+    def api_whatif():
+        """Answer a slider move with a formula result or a re-solve."""
+        data = request_data()
+        lp = load_model(data)
+        if "kind" not in data or "index" not in data or "new_value" not in data:
+            raise ValueError("Send kind ('c' or 'b'), index and new_value.")
+        answer = what_if(lp, data["kind"], int(data["index"]), data["new_value"])
+        return jsonify(jsonable(answer))
+
+    @app.route("/api/verify", methods=["POST"])
+    def api_verify():
+        """Compare our answer with docplex when the optional solver is installed."""
+        lp = load_model(request_data())
+        comparison = solve_with_docplex(lp)
+        if not comparison.get("available"):
+            return jsonify(jsonable({"ok": False, "available": False,
+                                     "error": comparison.get("error", "docplex is not installed")})), 404
+        ours = solve(lp)
+        match = (
+            ours.status == "optimal" and comparison["status"] == "optimal"
+            and abs(float(ours.z) - comparison["z"]) < 1e-6
+        )
+        return ok_response(
+            docplex=comparison,
+            ours={"z": None if ours.z is None else fmt(ours.z),
+                  "z_float": None if ours.z is None else float(ours.z),
+                  "iterations": max(len(ours.steps) - 1, 0)},
+            match=match,
+        )
 
     return app
 
