@@ -24,5 +24,6 @@ jobs:
         run: |
           python tests/test_engine.py
           python tests/test_modeling.py
+          python tests/test_report_pdf.py
       - name: Run pytest
-        run: python -m pytest tests/test_engine.py tests/test_modeling.py -q
+        run: python -m pytest tests/test_engine.py tests/test_modeling.py tests/test_report_pdf.py -q
