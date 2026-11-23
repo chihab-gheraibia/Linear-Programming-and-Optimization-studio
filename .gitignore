@@ -19,6 +19,7 @@ env/
 # Course documents (never commit slides or statements)
 *.pdf
 *.docx
+!docs/samples/*.pdf
 
 # Logs and OS files
 *.log

@@ -2,3 +2,5 @@ flask>=2.3
 # Optional tools, only used by the comparison features and the fuzz test.
 docplex>=2.25; python_version >= "3.10"
 scipy>=1.10; python_version >= "3.10"
+# Modeling Lab: vector PDF reports with embedded Unicode fonts.
+reportlab>=4.2
