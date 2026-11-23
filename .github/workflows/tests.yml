@@ -21,6 +21,8 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install pytest
       - name: Run plain asserts
-        run: python tests/test_engine.py
+        run: |
+          python tests/test_engine.py
+          python tests/test_modeling.py
       - name: Run pytest
-        run: python -m pytest tests/test_engine.py -q
+        run: python -m pytest tests/test_engine.py tests/test_modeling.py -q
