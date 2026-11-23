@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from solver.model import F, fmt
 from solver.modeling import (
     INTERPRETATION_TEMPLATES, MODEL_TEMPLATES, ModelingError, analyze,
-    build_model, get_modeling_example, numbers_in_text, usage,
+    build_model, get_modeling_example, join_words, numbers_in_text, usage,
 )
 from solver.parser import parse_lp
 
@@ -83,8 +83,9 @@ def test_athlete_engine_results():
 
 
 def test_furniture_production_results():
-    """M1: the production example and all its hand-checked ranges are exact."""
-    report = analyze(furniture())
+    """M1: production results and production vocabulary are correct in FR/EN."""
+    specification = get_modeling_example("furniture")
+    report = analyze(specification)
     assert report.status == "optimal"
     assert report.simplex.x == [F(10), F(2)]
     assert report.simplex.z == F(3400)
@@ -96,21 +97,54 @@ def test_furniture_production_results():
     check_interval(rhs[0], 14, None)
     check_interval(rhs[1], 16, 24)
     check_interval(rhs[2], 11, 14)
+    fr_text = report.interpretation["plain_text"]
+    assert "profit de M1" in fr_text
+    assert "le gain reste inchangé" in fr_text
+    assert "La ressource « Menuiserie » : prix fictif nul" in fr_text
+    assert "Les ressources qui pilotent la solution : Assemblage et Vernissage." in fr_text
+    assert "prix de M1" not in fr_text
+    english = dict(specification, lang="en")
+    en_text = analyze(english).interpretation["plain_text"]
+    assert "profit of M1" in en_text
+    assert "the gain is unchanged" in en_text
+    assert "The 'Menuiserie' resource: zero shadow price" in en_text
+    assert "The resources that drive the solution: Assemblage and Vernissage." in en_text
+    assert "price of M1" not in en_text
 
 
 def test_interpretation_both_languages():
-    """M1: FR/EN interpretations contain the key numbers and all six sections."""
+    """M1: FR/EN interpretations use wording that matches the example type."""
     fr = analyze(athlete("fr")).interpretation
     en = analyze(athlete("en")).interpretation
+    fr_text, en_text = fr["plain_text"], en["plain_text"]
     for token in ("9", "3", "300", "dh", "10", "5 g"):
-        assert token in fr["plain_text"], token
-    assert "300" in en["plain_text"] and "dh" in en["plain_text"]
+        assert token in fr_text, token
+    assert "300" in en_text and "dh" in en_text
     sections = {"decision", "resources", "shadow", "sensitivity",
                 "verification", "recommendations"}
     assert set(fr["sections"]) == set(en["sections"]) == sections
-    assert "13,33 (40/3)" in fr["plain_text"]
-    assert "13.33 (40/3)" in en["plain_text"]
+    assert "13,33 (40/3)" in fr_text
+    assert "13.33 (40/3)" in en_text
     assert fr["sections"]["decision"]["title"] == "Décision optimale"
+    assert "9 unités de P et 3 unités de Q" in fr_text
+    assert "9 units of P and 3 units of Q" in en_text
+    assert "L'exigence « protéines » : prix fictif nul" in fr_text
+    assert "The 'protéines' requirement: zero shadow price" in en_text
+    assert "Le plan reste optimal tant que le prix de P" in fr_text
+    assert "le coût reste inchangé" in fr_text
+    assert "the price of P" in en_text
+    assert "the cost is unchanged" in en_text
+    assert "profit of P" not in en_text and "profit de P" not in fr_text
+    assert "Les exigences qui pilotent la solution : vitamines et calcium." in fr_text
+    assert "The requirements that drive the solution: vitamines and calcium." in en_text
+    assert "son prix ne peut baisser que de 6,67" in fr_text
+    assert "(33 %)" in fr_text
+    assert "its price can only decrease by 6.67" in en_text
+    assert "(33%)" in en_text
+    assert join_words(["A", "B"], "fr") == "A et B"
+    assert join_words(["A", "B"], "en") == "A and B"
+    assert join_words(["A", "B", "C"], "fr") == "A, B et C"
+    assert join_words(["A", "B", "C"], "en") == "A, B and C"
 
 
 def infeasible_spec():

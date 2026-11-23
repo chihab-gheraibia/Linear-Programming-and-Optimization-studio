@@ -164,26 +164,39 @@ INTERPRETATION_TEMPLATES = {
         "decision_diet": "Il faut acheter {quantities}, pour un coût minimal de {z} {currency}.",
         "decision_production": "Il faut produire {quantities}, pour un gain maximal de {z} {currency}.",
         "quantity": "{value} {unit} de {name}",
-        "binding_diet": "{name} : saturée — exactement {value} {unit} exigés.",
-        "nonbinding_diet": "{name} : non saturée — {value} {unit} pour une exigence de {rhs} {unit}, soit un excédent de {slack} {unit}.",
-        "binding_production": "{name} : saturée — exactement {value} {unit} utilisés.",
-        "nonbinding_production": "{name} : non saturée — {value} {unit} utilisés pour {rhs} {unit} disponibles, soit {slack} {unit} inutilisés.",
-        "shadow_diet": "Chaque {unit} de {name} exigé en plus (ou en moins) fait varier le coût de {price} {currency}, tant que l'exigence reste dans [{low} ; {high}].",
-        "shadow_production": "Chaque {unit} de {name} supplémentaire fait gagner {price} {currency}, tant que la disponibilité reste dans [{low} ; {high}].",
-        "zero_shadow_diet": "Prix fictif nul : modifier légèrement cette exigence ne change pas le coût (valable jusqu'à {high} {unit}).",
-        "zero_shadow_production": "Prix fictif nul : modifier légèrement cette ressource ne change pas le gain (valable jusqu'à {high} {unit}).",
+        "label_diet": "L'exigence « {name} »",
+        "label_production": "La ressource « {name} »",
+        "labels_diet": "Les exigences",
+        "labels_production": "Les ressources",
+        "none_diet": "Aucune exigence",
+        "none_production": "Aucune ressource",
+        "binding_diet": "{label} : saturée — exactement {value} {unit} exigés.",
+        "nonbinding_diet": "{label} : non saturée — {value} {unit} pour une exigence de {rhs} {unit}, soit un excédent de {slack} {unit}.",
+        "binding_production": "{label} : saturée — exactement {value} {unit} utilisés.",
+        "nonbinding_production": "{label} : non saturée — {value} {unit} utilisés pour {rhs} {unit} disponibles, soit {slack} {unit} inutilisés.",
+        "shadow_diet": "{label} : chaque {unit} supplémentaire exigé fait varier le coût de {price} {currency}, tant que l'exigence reste dans [{low} ; {high}].",
+        "shadow_production": "{label} : chaque {unit} supplémentaire fait gagner {price} {currency}, tant que la disponibilité reste dans [{low} ; {high}].",
+        "zero_shadow_diet": "{label} : prix fictif nul : modifier légèrement cette exigence ne change pas le coût (valable jusqu'à {high}).",
+        "zero_shadow_production": "{label} : prix fictif nul : modifier légèrement cette ressource ne change pas le gain (valable jusqu'à {high}).",
+        "zero_unbounded": "toute valeur",
         "no_upper": "sans borne supérieure",
         "no_lower": "sans borne inférieure",
-        "sensitivity_cost": "Le plan reste optimal tant que le prix de {name} est dans [{low} ; {high}] {currency}.",
-        "sensitivity_profit": "Le plan reste optimal tant que le gain de {name} est dans [{low} ; {high}] {currency}.",
+        "param_diet": "prix",
+        "param_production": "profit",
+        "objective_word_diet": "coût",
+        "objective_word_production": "gain",
+        "sensitivity_cost": "Le plan reste optimal tant que le {parameter} de {name} est dans [{low} ; {high}] {currency} : le {objective} reste inchangé.",
+        "sensitivity_profit": "Le plan reste optimal tant que le {parameter} de {name} est dans [{low} ; {high}] {currency} : le {objective} reste inchangé.",
         "verification_diet": "Dualité forte : coût primal = valeur duale = {z}. Complémentarité : {check}.",
         "verification_production": "Dualité forte : profit primal = valeur duale = {z}. Complémentarité : {check}.",
         "check_ok": "vérifiée",
         "check_pending": "non vérifiée ({status})",
-        "recommend_drivers": "Ce sont {names} qui pilotent la solution.",
-        "recommend_none": "Aucune contrainte ne pilote le résultat actuel.",
-        "recommend_redundant": "{names} n'est pas saturée et n'influe donc pas sur la solution actuelle.",
-        "recommend_sensitive": "Le paramètre le plus sensible est {name} : sa marge relative est la plus faible.",
+        "recommend_drivers": "{labels} qui pilotent la solution : {names}.",
+        "recommend_none": "{none} ne pilote le résultat actuel.",
+        "recommend_redundant": "{label} n'est pas saturée et n'influe donc pas sur la solution actuelle.",
+        "recommend_sensitive": "{name} : son {parameter} ne peut {direction} que de {delta} {currency} ({percent}) avant que le plan change.",
+        "direction_down": "baisser",
+        "direction_up": "augmenter",
         "status_infeasible": "Aucune combinaison ne satisfait toutes les exigences : le problème est irréalisable.",
         "status_unbounded": "Le résultat peut être amélioré sans limite : le problème est non borné.",
         "status_alternative": "Plusieurs plans optimaux existent ; celui-ci est l'un d'eux.",
@@ -201,26 +214,39 @@ INTERPRETATION_TEMPLATES = {
         "decision_diet": "Buy {quantities}, for a minimum cost of {z} {currency}.",
         "decision_production": "Produce {quantities}, for a maximum profit of {z} {currency}.",
         "quantity": "{value} {unit} of {name}",
-        "binding_diet": "{name}: binding — exactly {value} {unit} required.",
-        "nonbinding_diet": "{name}: not binding — {value} {unit} for a requirement of {rhs} {unit}, a surplus of {slack} {unit}.",
-        "binding_production": "{name}: binding — exactly {value} {unit} used.",
-        "nonbinding_production": "{name}: not binding — {value} {unit} used out of {rhs} {unit}, leaving {slack} {unit} unused.",
-        "shadow_diet": "Each extra (or missing) {unit} of {name} changes the cost by {price} {currency}, while the requirement stays in [{low} ; {high}].",
-        "shadow_production": "Each extra {unit} of {name} adds {price} {currency}, while the availability stays in [{low} ; {high}].",
-        "zero_shadow_diet": "Zero shadow price: a small change in this requirement does not change the cost (valid up to {high} {unit}).",
-        "zero_shadow_production": "Zero shadow price: a small change in this resource does not change the profit (valid up to {high} {unit}).",
+        "label_diet": "The '{name}' requirement",
+        "label_production": "The '{name}' resource",
+        "labels_diet": "The requirements",
+        "labels_production": "The resources",
+        "none_diet": "No requirement",
+        "none_production": "No resource",
+        "binding_diet": "{label}: binding — exactly {value} {unit} required.",
+        "nonbinding_diet": "{label}: not binding — {value} {unit} for a requirement of {rhs} {unit}, a surplus of {slack} {unit}.",
+        "binding_production": "{label}: binding — exactly {value} {unit} used.",
+        "nonbinding_production": "{label}: not binding — {value} {unit} used out of {rhs} {unit}, leaving {slack} {unit} unused.",
+        "shadow_diet": "{label}: each extra {unit} changes the cost by {price} {currency}, while the requirement stays in [{low} ; {high}].",
+        "shadow_production": "{label}: each extra {unit} adds {price} {currency}, while the availability stays in [{low} ; {high}].",
+        "zero_shadow_diet": "{label}: zero shadow price: a small change in this requirement does not change the cost (valid up to {high}).",
+        "zero_shadow_production": "{label}: zero shadow price: a small change in this resource does not change the profit (valid up to {high}).",
+        "zero_unbounded": "any value",
         "no_upper": "no upper bound",
         "no_lower": "no lower bound",
-        "sensitivity_cost": "The plan stays optimal while the price of {name} is in [{low} ; {high}] {currency}.",
-        "sensitivity_profit": "The plan stays optimal while the profit of {name} is in [{low} ; {high}] {currency}.",
+        "param_diet": "price",
+        "param_production": "profit",
+        "objective_word_diet": "cost",
+        "objective_word_production": "gain",
+        "sensitivity_cost": "The plan stays optimal while the {parameter} of {name} is in [{low} ; {high}] {currency}: the {objective} is unchanged.",
+        "sensitivity_profit": "The plan stays optimal while the {parameter} of {name} is in [{low} ; {high}] {currency}: the {objective} is unchanged.",
         "verification_diet": "Strong duality: primal cost = dual value = {z}. Complementary slackness: {check}.",
         "verification_production": "Strong duality: primal profit = dual value = {z}. Complementary slackness: {check}.",
         "check_ok": "verified",
         "check_pending": "not verified ({status})",
-        "recommend_drivers": "{names} drive the solution.",
-        "recommend_none": "No constraint currently drives the result.",
-        "recommend_redundant": "{names} is not binding and does not affect the current solution.",
-        "recommend_sensitive": "The most sensitive parameter is {name}: it has the smallest relative margin.",
+        "recommend_drivers": "{labels} that drive the solution: {names}.",
+        "recommend_none": "{none} currently drives the result.",
+        "recommend_redundant": "{label} is not binding and does not affect the current solution.",
+        "recommend_sensitive": "{name}: its {parameter} can only {direction} by {delta} {currency} ({percent}) before the plan changes.",
+        "direction_down": "decrease",
+        "direction_up": "increase",
         "status_infeasible": "No combination satisfies every requirement: the problem is infeasible.",
         "status_unbounded": "The result can be improved without limit: the problem is unbounded.",
         "status_alternative": "Several optimal plans exist; this one is among them.",
@@ -593,12 +619,34 @@ def number_text(value, lang="fr"):
 def unit_label(unit, value, lang):
     """Pluralise the two standard unit words used by the wizard."""
     if F(value) == 1:
-        return unit
+        return {"heures": "heure", "hours": "hour"}.get(unit, unit)
     if lang == "fr" and unit == "unité":
         return "unités"
     if lang == "en" and unit == "unit":
         return "units"
     return unit
+
+
+def join_words(values, lang):
+    """Join two items with 'and'/'et', and longer lists with a final conjunction."""
+    words = [str(value) for value in values]
+    if len(words) < 2:
+        return "".join(words)
+    conjunction = "and" if lang == "en" else "et"
+    if len(words) == 2:
+        return f"{words[0]} {conjunction} {words[1]}"
+    return ", ".join(words[:-1]) + f" {conjunction} {words[-1]}"
+
+
+def percent_text(value, lang):
+    """Print a relative margin as a percentage in the report language."""
+    percent = round(float(value) * 100)
+    return f"{percent}%" if lang == "en" else f"{percent} %"
+
+
+def resource_label(row, kind, tpl):
+    """Quote a resource or requirement without forcing grammatical gender."""
+    return tpl["label_" + kind].format(name=row["name"])
 
 
 def interval_text(row, lang, tpl):
@@ -636,12 +684,12 @@ def decision_section(model, simplex, tpl):
     if simplex.status != "optimal" or simplex.x is None:
         return tpl["status_" + simplex.status if simplex.status in
                    ("infeasible", "unbounded") else "status_unknown"]
-    quantities = ", ".join(
+    quantities = join_words([
         tpl["quantity"].format(value=number_text(value, lang),
                                unit=unit_label(var["unit"], value, lang),
                                name=var["name"])
         for value, var in zip(simplex.x, model.variables)
-    )
+    ], lang)
     text = tpl[f"decision_{kind}"].format(
         quantities=quantities, z=number_text(simplex.z, lang),
         currency=model.spec["currency"])
@@ -662,7 +710,8 @@ def resources_section(model, simplex, tpl):
         used, difference, binding = usage(item, simplex.x)
         key = "binding" if binding else "nonbinding"
         lines.append(tpl[f"{key}_{model.spec['type']}"].format(
-            name=item["name"], unit=item["unit"],
+            label=resource_label(item, model.spec["type"], tpl),
+            unit=item["unit"],
             value=number_text(used, lang), rhs=number_text(item["amount"], lang),
             slack=number_text(difference, lang)))
     return "\n".join(lines)
@@ -678,12 +727,15 @@ def shadow_section(model, simplex, dual, sensitivity, tpl):
         item = sensitivity["rhs"][index]
         price = F(dual["shadow_prices"][index])
         low, high = interval_text(item, lang, tpl)
+        label = resource_label(row, kind, tpl)
+        singular = unit_label(row["unit"], 1, lang)
         if price == 0:
-            lines.append(tpl[f"zero_shadow_{kind}"].format(
-                name=row["name"], unit=row["unit"], high=high))
+            high = (f"{number_text(item['upper'], lang)} {row['unit']}"
+                    if item["upper"] is not None else tpl["zero_unbounded"])
+            lines.append(tpl[f"zero_shadow_{kind}"].format(label=label, high=high))
         else:
             lines.append(tpl[f"shadow_{kind}"].format(
-                name=row["name"], unit=row["unit"],
+                label=label, unit=singular,
                 price=number_text(price, lang),
                 currency=model.spec["currency"], low=low, high=high))
     if simplex.degenerate or len(dual.get("alternative_ys", [])) > 1:
@@ -697,10 +749,12 @@ def sensitivity_section(model, sensitivity, tpl):
     if not sensitivity:
         return tpl["unavailable"]
     key = "sensitivity_cost" if kind == "diet" else "sensitivity_profit"
+    parameter, objective = tpl["param_" + kind], tpl["objective_word_" + kind]
     lines = []
     for var, row in zip(model.variables, sensitivity["objective"]):
         low, high = interval_text(row, lang, tpl)
-        lines.append(tpl[key].format(name=var["name"], low=low, high=high,
+        lines.append(tpl[key].format(name=var["name"], parameter=parameter,
+                                     objective=objective, low=low, high=high,
                                      currency=model.spec["currency"]))
     return "\n".join(lines)
 
@@ -716,15 +770,21 @@ def verification_section(model, simplex, dual, complementary, tpl):
         z=number_text(simplex.z, lang), check=check)
 
 
-def relative_margin(row):
-    """Return the smallest relative distance from the current cost to its bounds."""
-    current = abs(F(row["current"])) or F(1)
-    margins = []
+def sensitive_candidate(sensitivity, variable, row):
+    """Return the nearest bound of one coefficient with its relative margin."""
+    current = F(row["current"])
+    scale = abs(current) or F(1)
+    choices = []
     if row["lower"] is not None:
-        margins.append(abs(F(row["current"]) - F(row["lower"])) / current)
+        delta = current - F(row["lower"])
+        choices.append((delta / scale, "down", delta))
     if row["upper"] is not None:
-        margins.append(abs(F(row["upper"]) - F(row["current"])) / current)
-    return min(margins) if margins else None
+        delta = F(row["upper"]) - current
+        choices.append((delta / scale, "up", delta))
+    if not choices:
+        return None
+    margin, direction, delta = min(choices)
+    return margin, variable, direction, delta
 
 
 def recommendations_section(model, simplex, dual, sensitivity, tpl):
@@ -732,20 +792,28 @@ def recommendations_section(model, simplex, dual, sensitivity, tpl):
     if simplex.status != "optimal" or not sensitivity:
         return tpl["status_" + simplex.status if simplex.status in
                    ("infeasible", "unbounded") else "status_unknown"]
+    kind, lang = model.spec["type"], model.spec["lang"]
     rows = model.rows
     binding = [row["name"] for index, row in enumerate(rows)
                if usage(row, simplex.x)[2] and dual and
                F(dual["shadow_prices"][index]) != 0]
-    lines = [tpl["recommend_drivers"].format(names=", ".join(binding)) if binding
-             else tpl["recommend_none"]]
-    loose = [row["name"] for row in rows if not usage(row, simplex.x)[2]]
-    if loose:
-        lines.append(tpl["recommend_redundant"].format(names=", ".join(loose)))
-    margins = [(relative_margin(row), var["name"])
-               for row, var in zip(sensitivity["objective"], model.variables)]
-    margins = [item for item in margins if item[0] is not None]
-    if margins:
-        lines.append(tpl["recommend_sensitive"].format(name=min(margins)[1]))
+    lines = [tpl["recommend_drivers"].format(
+        labels=tpl["labels_" + kind], names=join_words(binding, lang)) if binding
+        else tpl["recommend_none"].format(none=tpl["none_" + kind])]
+    for row in rows:
+        if not usage(row, simplex.x)[2]:
+            lines.append(tpl["recommend_redundant"].format(
+                label=resource_label(row, kind, tpl)))
+    candidates = [candidate for row, var in zip(sensitivity["objective"], model.variables)
+                  for candidate in [sensitive_candidate(sensitivity, var, row)]
+                  if candidate is not None]
+    if candidates:
+        margin, var, direction, delta = min(candidates)
+        lines.append(tpl["recommend_sensitive"].format(
+            name=var["name"], parameter=tpl["param_" + kind],
+            direction=tpl["direction_" + direction],
+            delta=number_text(delta, lang), percent=percent_text(margin, lang),
+            currency=model.spec["currency"]))
     return "\n".join(lines)
 
 
